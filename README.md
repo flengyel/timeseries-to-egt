@@ -34,7 +34,6 @@ See mathematical background: `docs/ts2eg_math_background.tex`.
 | 5. Equilibrium analysis | $A$             | Replicator Jacobian test        | ESS presence/absence                                     |
 | 6. Significance         | $X$             | IAAFT surrogates                | Empirical $p$-value                                      |
 
-
 **Stage 1 (definition).** Define the mean and centering projectors in player space
 
 $$
@@ -59,7 +58,7 @@ Form $v(t)=(v_1,\dots,v_N)^\top$ and carry forward $v_Z(t)=M_Zv(t)$.
 
 ## Mathematical setup
 
-* **Projectors.** $M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top,\; M_Z=I_N-M_I.$ Helmert $Q$ gives an orthonormal basis with $q_1\propto\mathbf{1}$. 
+* **Projectors.** $M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top,\; M_Z=I_N-M_I.$ Helmert $Q$ gives an orthonormal basis with $q_1\propto\mathbf{1}$.
 * **Weighted projectors.** For weights $w\in\mathbb{R}_{\ge0}^N$ with $\sum_i w_i>0$, define $\pi=w/\sum_i w_i$. Then
   $$
   M_I^{(w)}=\mathbf{1}\,\pi^\top,\qquad M_Z^{(w)}=I_N-\mathbf{1}\,\pi^\top.
