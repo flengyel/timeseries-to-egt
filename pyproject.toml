@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ts2eg"
-version = "0.1.0"
+version = "0.1.1"
 description = "Turn multivariate time series into evolutionary games and analyze stability via replicator dynamics."
 readme = "README.md"
 requires-python = ">=3.9"

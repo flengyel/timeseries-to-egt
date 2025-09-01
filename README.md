@@ -1,4 +1,5 @@
 # timeseries-to-egt (ts2eg): From Multivariate Time Series to Evolutionary Games
+[![CI](https://github.com/flengyel/timeseries-to-egt/actions/workflows/ci.yml/badge.svg)](https://github.com/flengyel/timeseries-to-egt/actions/workflows/ci.yml)
 
 This project **interprets a multivariate time series as an evolutionary (normal‑form) game** and then analyzes it with **replicator dynamics** to test for **Evolutionarily Stable Strategies (ESS)**.
 
