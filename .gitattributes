@@ -1,0 +1,9 @@
+# Normalize line endings to LF in repo; Windows will convert on checkout if configured
+*.py    text eol=lf
+*.sh    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.tex   text eol=lf
+*.ipynb text eol=lf
