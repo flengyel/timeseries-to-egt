@@ -260,7 +260,7 @@ def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, 
         seed_s = int(rng.integers(0, 2**32 - 1))
         Xs = iaaft_matrix(X, n_iter=iaaft_iters, seed=seed_s)
         vs = iaaft_matrix(v, n_iter=iaaft_iters, seed=(seed_s ^ 0x9e3779b1))
-        est = estimate_A_from_series_weighted(S, Xs, vs, k=k, ridge=lambda_, weights=weights)
+        est = estimate_A_from_series_weighted(S, Xs, vs, k=k, ridge=ridge, weights=weights)
         A = est["A"]
         R2_list.append(est["R2"])
         res = gm.find_ESS(A, tol=tol, max_support=max_support)
