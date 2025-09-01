@@ -78,12 +78,12 @@ X0 = (X - X.min(axis=1, keepdims=True)) / (X.ptp(axis=1, keepdims=True) + 1e-9)
 S, H = gm.nmf_on_X(X0, k=3, iters=200, seed=2, normalize="l2")
 
 X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
-A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=3, lambda_=1e-3, weights=w)["A"]
+A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=3, ridge=1e-3, weights=w)["A"]
 
 ess = [e for e in gm.find_ESS(A, tol=1e-8, max_support=3) if e["is_ess"]]
 
 # Optional: surrogate significance via IAAFT
-sig = ext.surrogate_ess_frequency(S, X_std, X_std, k=3, lambda_=1e-3,
+sig = ext.surrogate_ess_frequency(S, X_std, X_std, k=3, ridge=1e-3,
                                   num_surrogates=50, iaaft_iters=100, weights=w, seed=0)
 print("ESS supports:", [e["support"] for e in ess])
 print("Surrogate ESS rate:", sig["ess_rate"])
@@ -146,7 +146,7 @@ var_information_sharing_game_seasonal(...)
 nmf_on_X(X, k, iters=200, seed=None, normalize="l2") -> (S, H)
 
 # Replicator operator
-estimate_A_from_series(S, X, v, k, lambda_=0.0) -> {..., "A": A}
+estimate_A_from_series(S, X, v, k, ridge=0.0) -> {..., "A": A}
 estimate_A_from_series_weighted(..., weights=None) -> {..., "A": A}
 
 # Equilibria

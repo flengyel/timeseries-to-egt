@@ -13,7 +13,7 @@ def test_A_rowcol_centering_enforced():
     rng=np.random.default_rng(0); N,T,k=6,120,3
     X=rng.standard_normal((N,T)); S=np.abs(rng.standard_normal((N,k)))
     Xs=(X-X.mean(axis=1,keepdims=True))/(X.std(axis=1,keepdims=True)+1e-12)
-    A=gm.estimate_A_from_series(S, Xs, Xs, k=k, lambda_=1e-3)["A"]
+    A=gm.estimate_A_from_series(S, Xs, Xs, k=k, ridge=1e-3)["A"]
     MZk=np.eye(k)-np.ones((k,k))/k
     assert np.allclose(MZk@A@MZk, A, atol=1e-8)
 

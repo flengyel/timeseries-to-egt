@@ -33,7 +33,7 @@ def test_weighted_A_row_centering_and_R2():
     # Standardize X for estimation; use it as payoff field for smoke test
     X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
     w = np.array([0.5, 0.8, 1.0, 0.9, 0.7])[:N]
-    est = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=K, lambda_=1e-3, weights=w)
+    est = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=K, ridge=1e-3, weights=w)
     A = est["A"]
     # Row sums approximately zero (replicator invariance)
     assert np.allclose(A.sum(axis=0), 0.0, atol=1e-8)
@@ -58,7 +58,7 @@ def test_surrogate_harness_bounds():
     S, H = gm.nmf_on_X((X - X.min(axis=1, keepdims=True)) / (X.max(axis=1, keepdims=True) - X.min(axis=1, keepdims=True) + 1e-9),
                         k=3, iters=120, seed=3, normalize="l2")
     w = np.array([0.6, 0.9, 1.0, 0.8, 0.7])[:X.shape[0]]
-    summ = ext.surrogate_ess_frequency(S, X_std, X_std, k=S.shape[1], lambda_=1e-3,
+    summ = ext.surrogate_ess_frequency(S, X_std, X_std, k=S.shape[1], ridge=1e-3,
                                        num_surrogates=3, iaaft_iters=30, weights=w, seed=42)
     assert 0.0 <= summ["ess_rate"] <= 1.0
     assert 0.0 <= summ["nash_rate"] <= 1.0
