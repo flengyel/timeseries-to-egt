@@ -74,7 +74,7 @@ res = ext.var_information_sharing_game_seasonal(
 )
 
 # Strategy basis (NMF) and replicator operator A
-X0 = (X - X.min(axis=1, keepdims=True)) / (X.ptp(axis=1, keepdims=True) + 1e-9)
+X0 = (X - X.min(axis=1, keepdims=True)) / (np.ptp(X,axis=1, keepdims=True) + 1e-9)
 S, H = gm.nmf_on_X(X0, k=3, iters=200, seed=2, normalize="l2")
 
 X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
