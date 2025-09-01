@@ -4,9 +4,9 @@ This project **interprets a multivariate time series as an evolutionary (normal�
 
 Concretely:
 
-- From signals \(X \in \mathbb{R}^{N\times T}\), we construct per‑time **payoff vectors** and decompose them into **common‑interest** vs **zero‑sum** directions.
-- We learn a small set of **strategies** \(S\in\mathbb{R}^{N\times k}\) and infer **mixtures** \(x(t)\in\Delta_k\).
-- We fit a **strategy‑level payoff operator** \(A\) so that **replicator dynamics** apply.
+- From signals $X \in \mathbb{R}^{N\times T}$, we construct per‑time **payoff vectors** and decompose them into **common‑interest** vs **zero‑sum** directions.
+- We learn a small set of **strategies** $S\in\mathbb{R}^{N\times k}$ and infer **mixtures** $x(t)\in\Delta_k$.
+- We fit a **strategy‑level payoff operator** $A$ so that **replicator dynamics** apply.
 - We search for **ESS** and use **IAAFT surrogates** to assess **significance**. Finding an ESS is treated as **evidence of strategic interaction** in the data.
 
 **Package:** `ts2eg` (src‑layout). Canonical code: `src/ts2eg/core.py` and `src/ts2eg/extensions.py`.
@@ -26,11 +26,11 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-Python \(\ge\) 3.9 recommended. CI runs `pytest` on 3.9–3.12.
+Python $\ge$ 3.9 recommended. CI runs `pytest` on 3.9–3.12.
 
 ---
 
-## Repository layout (actual)
+## Repository layout
 
 ```text
 .
@@ -101,8 +101,8 @@ Many “inverse EGT” papers start from observed **strategy frequencies**. Real
 
 1. Decompose per‑time payoffs into **common‑interest** vs **zero‑sum** directions (ANOVA/Helmert).
 2. Induce payoffs from time series via two choices: static discretized profiles or **information‑sharing** gains (VAR‑like OLS).
-3. Learn a compact **strategy basis** and infer time‑varying **mixtures** \(x(t)\in\Delta_k\).
-4. Fit a **strategy‑level payoff operator** \(A\) so replicator dynamics apply.
+3. Learn a compact **strategy basis** and infer time‑varying **mixtures** $x(t)\in\Delta_k$.
+4. Fit a **strategy‑level payoff operator** $A$ so replicator dynamics apply.
 5. Search for **ESS** and quantify significance with **IAAFT surrogates**.
 (Original phrasing restored and expanded.)
 
@@ -111,24 +111,24 @@ Many “inverse EGT” papers start from observed **strategy frequencies**. Real
 ## Pipeline
 
 **0) Mean/contrast geometry (ANOVA/Helmert).**  
-Common‑interest projector \(M_I=\tfrac{1}{N}\mathbf1\mathbf1^\top\); centering \(M_Z=I-M_I\). Optional Helmert basis (first column \(\mathbf1/\sqrt N\)).
+Common‑interest projector $M_I=\tfrac{1}{N}\mathbf1\mathbf1^\top$; centering $M_Z=I-M_I$. Optional Helmert basis (first column $\mathbf1/\sqrt N$).
 
 **1) Payoff induction from time series.**
 
-- **Static profiles:** discretize \(M_Z X\) (e.g., terciles) and map joint profiles to \(\mathbb E[X_{t+1}\mid a_t]\); keep \(M_I/M_Z\) components.
-- **Information sharing (VAR = Vector Autoregression):** per player \(i\), baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
+- **Static profiles:** discretize $M_Z X$ (e.g., terciles) and map joint profiles to $\mathbb E[X_{t+1}\mid a_t]$; keep $M_I/M_Z$ components.
+- **Information sharing (VAR = Vector Autoregression):** per player $i$, baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
 
 **2) Strategies and mixtures.**  
-Learn \(S\in\mathbb R^{N\times k}\) (NMF/archetypes recommended). Infer \(x(t)\in\Delta_k\) by projecting \(X_{\cdot,t}\) onto cone\((S)\) with a simplex constraint.
+Learn $S\in\mathbb R^{N\times k}$ (NMF/archetypes recommended). Infer $x(t)\in\Delta_k$ by projecting $X_{\cdot,t}$ onto cone$(S)$ with a simplex constraint.
 
 **3) Strategy‑level signals.**  
-\(g(t)=S^\top v_Z(t)\) where \(v_Z(t)=M_Z v(t)\).
+$g(t)=S^\top v_Z(t)$ where $v_Z(t)=M_Z v(t)$.
 
 **4) Replicator‑compatible operator.**  
-Center in strategy space \(M_Z^{(k)}=I-\tfrac{1}{k}\mathbf1\mathbf1^\top\). Fit \(A\) via ridge so \(M_Z^{(k)} g \approx A x\); row/column centering for invariance.
+Center in strategy space $M_Z^{(k)}=I-\tfrac{1}{k}\mathbf1\mathbf1^\top$. Fit $A$ via ridge so $M_Z^{(k)} g \approx A x$; row/column centering for invariance.
 
 **5) Equilibria and ESS.**  
-Enumerate supports; solve \(A_{JJ}x_J=\alpha \mathbf1\) with \(\mathbf1^\top x_J=1\); check off‑support; test stability via the replicator Jacobian on the tangent space.
+Enumerate supports; solve $A_{JJ}x_J=\alpha \mathbf1$ with $\mathbf1^\top x_J=1$; check off‑support; test stability via the replicator Jacobian on the tangent space.
 
 ---
 
@@ -165,11 +165,11 @@ surrogate_ess_frequency(...) -> {"ess_rate": float, ...}
 
 ## Diagnostics & significance
 
-- Held‑out \(R^2\) of \(M_Z^{(k)}g \approx A x\)  
-- Energy split \(A_s=(A+A^\top)/2\) vs \(A_a=(A-A^\top)/2\)  
+- Held‑out $R^2$ of $M_Z^{(k)}g \approx A x$  
+- Energy split $A_s=(A+A^\top)/2$ vs $A_a=(A-A^\top)/2$  
 - IAAFT surrogate ESS rate vs observed  
-- Rolling windows of \(A\) and ESS (nonstationarity)  
-- Edge case: if \(X_t=c_t\mathbf1\), then \(v_Z\equiv 0\) → no EGT signal (by design)
+- Rolling windows of $A$ and ESS (nonstationarity)  
+- Edge case: if $X_t=c_t\mathbf1$, then $v_Z\equiv 0$ → no EGT signal (by design)
 
 ---
 
@@ -204,7 +204,7 @@ All tests pass locally on Python ≥ 3.9.
 
 ## Reproducibility
 
-Seed RNGs; keep OLS/ridge deterministic; save \(S\), \(A\), and window params; report \(k\), \(\lambda\), and commit hash.
+Seed RNGs; keep OLS/ridge deterministic; save $S$, $A$, and window params; report $k$, $\lambda$, and commit hash.
 
 ---
 
