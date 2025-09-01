@@ -10,3 +10,5 @@ dist/
 *.tgz
 
 *.bak
+
+src/ts2eg.egg-info/
