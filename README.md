@@ -3,8 +3,6 @@
 [![CI](https://github.com/flengyel/timeseries-to-egt/actions/workflows/ci.yml/badge.svg)](https://github.com/flengyel/timeseries-to-egt/actions/workflows/ci.yml)
 
 <!-- ts2eg-intro-exact-start -->
-
-
 ## Introduction
 
 `ts2eg` is an **inverse evolutionary game theory** pipeline that tests a multivariate time series $X\in\mathbb{R}^{N\times T}$ for **competitive (zero-sum) strategic interaction**.
@@ -36,14 +34,33 @@ See mathematical background: `docs/ts2eg_math_background.tex`.
 | 5. Equilibrium analysis | $A$             | Replicator Jacobian test        | ESS presence/absence                                     |
 | 6. Significance         | $X$             | IAAFT surrogates                | Empirical $p$-value                                      |
 
+
+**Stage 1 (definition).** Define the mean and centering projectors in player space
+
+$$
+M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top,\qquad M_Z=I_N-M_I.
+$$
+
+For any player-level vector $y\in\mathbb{R}^N$, decompose $y=y_I+y_Z$ with $y_Z=M_Z y$ and **retain only $y_Z$**. In practice we apply this to payoffs: once Stage 2 produces $v(t)$, set
+
+$$
+v_Z(t)=M_Z\,v(t),
+$$
+
+and carry $v_Z(t)$ forward.
+
+**Weighted variant:** for $w\ge 0$ with $\sum_i w_i>0$, let $\pi=w/\sum_i w_i$ and use $M_I^{(w)}=\mathbf{1}\pi^\top,\; M_Z^{(w)}=I_N-\mathbf{1}\pi^\top$.
+
+**Note:** if $X_{\cdot,t}=c_t\,\mathbf{1}$ for all $t$, then $v_Z\equiv 0$ and the test (correctly) returns a null result.
+
 **Stage 2 (definition).** For each player $i$, fit (i) a self-only AR($p$) model and (ii) a full VAR($p$) using all players (ridge-regularized). The information-sharing payoff is the **MSE reduction**  
 $\;\;v_i=\mathrm{MSE}_{\text{self}}-\mathrm{MSE}_{\text{full}}.$  
 Form $v(t)=(v_1,\dots,v_N)^\top$ and carry forward $v_Z(t)=M_Zv(t)$.
 
 ## Mathematical setup
 
-* **Projectors.** $M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top,\; M_Z=I_N-M_I.$ Helmert $Q$ gives an orthonormal basis with $q_1\propto\mathbf{1}$.  
-  **Weighted projectors.** For weights $w\in\mathbb{R}_{\ge0}^N$ with $\sum_i w_i>0$, define $\pi=w/\sum_i w_i$. Then
+* **Projectors.** $M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top,\; M_Z=I_N-M_I.$ Helmert $Q$ gives an orthonormal basis with $q_1\propto\mathbf{1}$. 
+* **Weighted projectors.** For weights $w\in\mathbb{R}_{\ge0}^N$ with $\sum_i w_i>0$, define $\pi=w/\sum_i w_i$. Then
   $$
   M_I^{(w)}=\mathbf{1}\,\pi^\top,\qquad M_Z^{(w)}=I_N-\mathbf{1}\,\pi^\top.
   $$
@@ -56,7 +73,7 @@ Form $v(t)=(v_1,\dots,v_N)^\top$ and carry forward $v_Z(t)=M_Zv(t)$.
   A\leftarrow M_Z^{(k)}\,A\,M_Z^{(k)}.
   $$
   The estimator uses `np.linalg.solve` with `pinv` fallback and **enforces $A\mathbf{1}=\mathbf{0}$ and $\mathbf{1}^\top A=\mathbf{0}$** via the centering step.
-* **Dynamics/ESS.** Replicator $\dot{x}_i=x_i\big((Ax)_i-x^\top A x\big)$. `find_ESS` enumerates supports, checks Nash feasibility, and tests **local stability via the Jacobian on the tangent space**.
+* **Dynamics/ESS.** Replicator $\dot{x}_i=x_i\big((Ax)_i-x^\top A x\big)$. The function `find_ESS` enumerates supports, checks Nash feasibility, and tests **local stability via the Jacobian on the tangent space**.
 
 ## Interpreting the results
 
@@ -70,7 +87,6 @@ Form $v(t)=(v_1,\dots,v_N)^\top$ and carry forward $v_Z(t)=M_Zv(t)$.
 * Ridge regularization with pseudo-inverse fallback for near-singular $C_{xx}$.
 * Weighted variants guard against $\sum w=0$.
 * Reproducible examples (`--seed`) seed NumPy (and Python RNG where used); NumPy-2-compatible.
-
 
 <!-- ts2eg-intro-exact-end -->
 
@@ -180,8 +196,8 @@ Common‑interest projector $M_I=\tfrac{1}{N}\mathbf1\mathbf1^\top$; centering $
 
 **1) Payoff induction from time series.**
 
-- **Static profiles:** discretize $M_Z X$ (e.g., terciles) and map joint profiles to $\mathbb E[X_{t+1}\mid a_t]$; keep $M_I/M_Z$ components.
-- **Information sharing (VAR = Vector Autoregression):** per player $i$, baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
+* **Static profiles:** discretize $M_Z X$ (e.g., terciles) and map joint profiles to $\mathbb E[X_{t+1}\mid a_t]$; keep $M_I/M_Z$ components.
+* **Information sharing (VAR = Vector Autoregression):** per player $i$, baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
 
 **2) Strategies and mixtures.**  
 Learn $S\in\mathbb R^{N\times k}$ (NMF/archetypes recommended). Infer $x(t)\in\Delta_k$ by projecting $X_{\cdot,t}$ onto cone$(S)$ with a simplex constraint.
@@ -230,21 +246,21 @@ surrogate_ess_frequency(...) -> {"ess_rate": float, ...}
 
 ## Diagnostics & significance
 
-- Held‑out $R^2$ of $M_Z^{(k)}g \approx A x$  
-- Energy split $A_s=(A+A^\top)/2$ vs $A_a=(A-A^\top)/2$  
-- IAAFT surrogate ESS rate vs observed  
-- Rolling windows of $A$ and ESS (nonstationarity)  
-- Edge case: if $X_t=c_t\mathbf1$, then $v_Z\equiv 0$ → no EGT signal (by design)
+* Held‑out $R^2$ of $M_Z^{(k)}g \approx A x$  
+* Energy split $A_s=(A+A^\top)/2$ vs $A_a=(A-A^\top)/2$  
+* IAAFT surrogate ESS rate vs observed  
+* Rolling windows of $A$ and ESS (nonstationarity)  
+* Edge case: if $X_t=c_t\mathbf1$, then $v_Z\equiv 0$ → no EGT signal (by design)
 
 ---
 
 ## Applications & demos
 
-- **Finance:** capital–labor, factor rotation & governance.  
-- **Biology:** ecology/microbiology/cancer per‑capita growth, interaction fields, ESS.  
-- **Sociology:** coalitions, protests, diffusion.  
-- **Cybersecurity:** detector portfolio governance, deception, orchestration.  
-- **SETI (toy):** spectral band allocation nulls.
+* **Finance:** capital–labor, factor rotation & governance.  
+* **Biology:** ecology/microbiology/cancer per‑capita growth, interaction fields, ESS.  
+* **Sociology:** coalitions, protests, diffusion.  
+* **Cybersecurity:** detector portfolio governance, deception, orchestration.  
+* **SETI (toy):** spectral band allocation nulls.
 
 See `examples/demo_var_game.py` and `notebooks/` for runnable artifacts.
 
@@ -252,8 +268,8 @@ See `examples/demo_var_game.py` and `notebooks/` for runnable artifacts.
 
 ## Notebooks & docs
 
-- **notebooks/**: curated demos include a bootstrap cell so `import ts2eg` works before install  
-- **docs/**: FINANCE.md, BIOLOGY.md, SOCIOLOGY.md, CYBERSECURITY.md, CAPITAL_LABOR.md summarize domain use
+* **notebooks/**: curated demos include a bootstrap cell so `import ts2eg` works before install  
+* **docs/**: FINANCE.md, BIOLOGY.md, SOCIOLOGY.md, CYBERSECURITY.md, CAPITAL_LABOR.md summarize domain use
 
 ---
 
@@ -294,20 +310,20 @@ MIT.
 
 **Vectors & matrices**  
 
-- $\mathbf{1}_n \in \mathbb{R}^n$: all-ones column vector  
-- $I_n$: $n\times n$ identity  
-- $X \in \mathbb{R}^{N\times T}$: time series (rows = series, cols = time)  
-- $S \in \mathbb{R}^{N\times k}$: nonnegative strategy loadings (from NMF)  
-- $X_k \in \mathbb{R}^{k\times T}$: reduced membership/latent time series  
-- $A \in \mathbb{R}^{k\times k}$: normal-form payoff operator in strategy space  
+* $\mathbf{1}_n \in \mathbb{R}^n$: all-ones column vector  
+* $I_n$: $n\times n$ identity  
+* $X \in \mathbb{R}^{N\times T}$: time series (rows = series, cols = time)  
+* $S \in \mathbb{R}^{N\times k}$: nonnegative strategy loadings (from NMF)  
+* $X_k \in \mathbb{R}^{k\times T}$: reduced membership/latent time series  
+* $A \in \mathbb{R}^{k\times k}$: normal-form payoff operator in strategy space  
 
 **Projectors (unweighted)**  
 
-- Mean projector onto the constant subspace:  
+* Mean projector onto the constant subspace:  
   $$M_I^{(n)}=\frac{1}{n}\,\mathbf{1}_n \mathbf{1}_n^\top \quad\text{(symmetric, idempotent, rank 1)}$$
-- Centering projector onto the zero-mean subspace:  
+* Centering projector onto the zero-mean subspace:  
   $$M_Z^{(n)}=I_n-M_I^{(n)}=I_n-\frac{1}{n}\,\mathbf{1}_n \mathbf{1}_n^\top \quad\text{(symmetric, idempotent)}$$
-- Identities: $M_I^{(n)}\mathbf{1}_n=\mathbf{1}_n$, $M_Z^{(n)}\mathbf{1}_n=\mathbf{0}$, $M_I^{(n)}M_Z^{(n)}=0$, $M_I^{(n)}+M_Z^{(n)}=I_n$.
+* Identities: $M_I^{(n)}\mathbf{1}_n=\mathbf{1}_n$, $M_Z^{(n)}\mathbf{1}_n=\mathbf{0}$, $M_I^{(n)}M_Z^{(n)}=0$, $M_I^{(n)}+M_Z^{(n)}=I_n$.
 
 **Projectors (weighted)**  
 For weights $w\in\mathbb{R}_{\ge 0}^n$ with $\sum_i w_i>0$, define $\pi = w/\sum_i w_i$. Then  
@@ -316,9 +332,9 @@ $$M_I^{(n)}(w)=\mathbf{1}_n \pi^\top,\qquad M_Z^{(n)}(w)=I_n-\mathbf{1}_n \pi^\t
 
 **Helmert basis $Q$**  
 
-- $Q\in\mathbb{R}^{N\times N}$ orthonormal with $Q^\top Q=I_N$.  
-- First column $q_1=\mathbf{1}_N/\sqrt{N}$ spans the mean subspace; columns $2..N$ span the centered subspace.  
-- Code: `Q = ts2eg.helmert_Q(N)`; invariants: `Q.T @ Q == I`, `Q[:,0] == 1/sqrt(N)`.
+* $Q\in\mathbb{R}^{N\times N}$ orthonormal with $Q^\top Q=I_N$.  
+* First column $q_1=\mathbf{1}_N/\sqrt{N}$ spans the mean subspace; columns $2..N$ span the centered subspace.  
+* Code: `Q = ts2eg.helmert_Q(N)`; invariants: `Q.T @ Q == I`, `Q[:,0] == 1/sqrt(N)`.
 
 **Centering a payoff operator**  
 When payoffs are defined up to additive constants in strategies, enforce  
@@ -335,10 +351,10 @@ implemented with `np.linalg.solve`, fallback to `np.linalg.pinv` on singularitie
 
 **API touchpoints**  
 
-- `helmert_Q(N)`, `projectors(N)` → $Q$, $M_I^{(N)}$, $M_Z^{(N)}$  
-- `estimate_A_from_series(S, X, v, k, ridge=...)` → $A$ (+ diagnostics)  
-- `extensions.estimate_A_from_series_weighted(..., ridge=..., weights=...)` uses $M_I^{(n)}(w)$, $M_Z^{(n)}(w)$ for weighted centering  
-- `find_ESS(A)` → ESS/Nash summary  
+* `helmert_Q(N)`, `projectors(N)` → $Q$, $M_I^{(N)}$, $M_Z^{(N)}$  
+* `estimate_A_from_series(S, X, v, k, ridge=...)` → $A$ (+ diagnostics)  
+* `extensions.estimate_A_from_series_weighted(..., ridge=..., weights=...)` uses $M_I^{(n)}(w)$, $M_Z^{(n)}(w)$ for weighted centering  
+* `find_ESS(A)` → ESS/Nash summary  
 
 **Further derivations**  
 See **docs/ts2eg_math_background.tex** for proofs linking $Q$, projectors, and centering of $A$.
