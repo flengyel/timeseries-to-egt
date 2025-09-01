@@ -112,6 +112,7 @@ Many “inverse EGT” papers start from observed **strategy frequencies**. Real
 Common‑interest projector \(M_I=\tfrac{1}{N}\mathbf1\mathbf1^\top\); centering \(M_Z=I-M_I\). Optional Helmert basis (first column \(\mathbf1/\sqrt N\)).
 
 **1) Payoff induction from time series.**
+
 - **Static profiles:** discretize \(M_Z X\) (e.g., terciles) and map joint profiles to \(\mathbb E[X_{t+1}\mid a_t]\); keep \(M_I/M_Z\) components.
 - **Information sharing (VAR = Vector Autoregression):** per player \(i\), baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
 
@@ -194,6 +195,7 @@ See `examples/demo_var_game.py` and `notebooks/` for runnable artifacts.
 ```bash
 pytest -q
 ```
+
 All tests pass locally on Python ≥ 3.9.
 
 ---
@@ -220,3 +222,71 @@ MIT.
   note    = {Version <tag/commit>}
 }
 ```
+
+## Math glossary
+
+**Vectors & matrices.**  
+
+- \( \mathbf{1}_n \in \mathbb{R}^n \): all-ones column vector.  
+- \( I_n \): \(n\times n\) identity.  
+- \( X \in \mathbb{R}^{N\times T} \): time series (rows = series, cols = time).  
+- \( S \in \mathbb{R}^{N\times k} \): nonnegative “strategy” loadings (from NMF).  
+- \( X_k \in \mathbb{R}^{k\times T} \): reduced membership/latent time series.  
+- \( A \in \mathbb{R}^{k\times k} \): normal-form payoff operator in strategy space.
+
+**Projectors (unweighted).**  
+
+- Mean projector onto the constant subspace:
+  \[
+  M_I^{(n)} \;=\; \frac{1}{n}\,\mathbf{1}_n \mathbf{1}_n^\top
+  \qquad (\text{symmetric, idempotent, rank }1)
+  \]
+- Centering projector onto the zero-mean subspace:
+  \[
+  M_Z^{(n)} \;=\; I_n - M_I^{(n)} \;=\; I_n - \frac{1}{n}\,\mathbf{1}_n \mathbf{1}_n^\top
+  \qquad (\text{symmetric, idempotent})
+  \]
+- Identities: \(M_I^{(n)} \mathbf{1}_n=\mathbf{1}_n\), \(M_Z^{(n)} \mathbf{1}_n=\mathbf{0}\), \(M_I^{(n)}M_Z^{(n)}=0\), \(M_I^{(n)}+M_Z^{(n)}=I_n\).
+
+**Projectors (weighted).**  
+
+For weights \(w\in\mathbb{R}^n_{\ge 0}\) with \(\sum_i w_i>0\), define \(\pi = w/\sum_i w_i\). Then
+\[
+M_I^{(n)}(w) \;=\; \mathbf{1}_n \pi^\top,\qquad
+M_Z^{(n)}(w) \;=\; I_n - \mathbf{1}_n \pi^\top .
+\]
+(These are the orthogonal projectors under the \(w\)-weighted inner product.)
+
+**Helmert basis \(Q\).**  
+
+- \(Q\in\mathbb{R}^{N\times N}\) orthonormal with \(Q^\top Q = I_N\).  
+- First column \(q_1=\mathbf{1}_N/\sqrt{N}\) spans the mean subspace; columns \(2..N\) span the centered subspace.  
+- Code: `Q = ts2eg.helmert_Q(N)`. Invariants: `Q.T @ Q == I`, `Q[:,0] == 1/sqrt(N)`.
+
+**Centering a payoff operator.**  
+When payoffs are defined only up to additive constants in strategies, enforce
+\[
+A \;\leftarrow\; M_Z^{(k)} \, A \, M_Z^{(k)}
+\]
+to remove row/column offsets (row/column means become zero in strategy space).  
+Code guarantees: `A = MZ_k @ A @ MZ_k` with \(MZ_k = M_Z^{(k)}\).
+
+**Ridge-regularized fit for \(A\).**  
+Given \(C_{xx}=X_k X_k^\top\) and \(C_{gx}=G_c X_k^\top\) (centered signals \(G_c\)),
+\[
+A \;=\; C_{gx}\,(C_{xx}+\rho I_k)^{-1},
+\]
+with \(\rho=\texttt{ridge}\ge 0\); code uses `np.linalg.solve` and falls back to `np.linalg.pinv` on singularities.
+
+**ESS / Nash (sketch).**  
+`ts2eg.find_ESS(A)` enumerates mixed-support candidates, checks Nash conditions and evolutionary stability (replicator Jacobian on supports). Returns flags `is_nash`, `is_ess`.
+
+**API touchpoints.**  
+
+- `helmert_Q(N)`, `projectors(N)` → \(Q\), \(M_I^{(N)}\), \(M_Z^{(N)}\).  
+- `estimate_A_from_series(S, X, v, k, ridge=...)` → \(A\) (and diagnostics).  
+- `extensions.estimate_A_from_series_weighted(..., ridge=..., weights=...)` uses \(M_I^{(n)}(w)\), \(M_Z^{(n)}(w)\) semantics for weighted centering.  
+- `find_ESS(A)` → ESS/Nash summary.
+
+**Further derivations.**  
+See **[docs/ts2eg_math_background.tex](docs/ts2eg_math_background.tex)** for proofs and the connection between \(Q\), projectors, and row/column-centering of \(A\).
