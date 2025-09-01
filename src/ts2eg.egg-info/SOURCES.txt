@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+src/ts2eg/__init__.py
+src/ts2eg/core.py
+src/ts2eg/extensions.py
+src/ts2eg.egg-info/PKG-INFO
+src/ts2eg.egg-info/SOURCES.txt
+src/ts2eg.egg-info/dependency_links.txt
+src/ts2eg.egg-info/requires.txt
+src/ts2eg.egg-info/top_level.txt
+tests/test_extensions_egt.py
+tests/test_package_import.py
+tests/test_projectors.py
+tests/test_seasonal_var.py

@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.egg-info/
+.eggs/
+.build/
+dist/
+build/
+.env
+.venv/
+venv/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+coverage.xml
+htmlcov/
+.coverage*
+.cache/
+
+# Notebooks / artifacts
+.ipynb_checkpoints/
+artifacts/
+*.nbconvert.ipynb
+
+# VS Code & OS junk
+.vscode/
+.DS_Store
+Thumbs.db
+
+# CI local overrides
+.github/*.local.yml
+
+# Data (adjust as needed)
+data/
+*.csv
+*.parquet
+*.feather
+*.h5
+*.npz
+*.npy
+
+# Logs
+logs/
+*.log

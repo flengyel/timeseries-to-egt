@@ -1,0 +1,269 @@
+
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+
+\title{\textbf{timeseries-to-egt (ts2eg):\\
+Mathematical Background and Construction}}
+\author{}
+\date{\today}
+
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+\newcommand{\one}{\mathbf{1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+This note collects the mathematics underlying the \emph{timeseries-to-egt} pipeline. The procedure
+\begin{enumerate}[leftmargin=*]
+    \item constructs per-time \emph{payoff vectors} $v(t)\in\R^N$ from an $N\times T$ multivariate time series $X$,
+    \item decomposes $v(t)$ into \emph{common-interest} and \emph{zero-sum} parts via orthogonal projections,
+    \item maps player space to a $k$-strategy space using a data-driven dictionary $S\in\R^{N\times k}$ and mixtures $x(t)\in\Delta_k$,
+    \item estimates a strategy-level operator $A\in\R^{k\times k}$ compatible with replicator dynamics, and
+    \item computes (and tests stability of) mixed equilibria, using IAAFT surrogates to assess significance.
+\end{enumerate}
+Finding an ESS is interpreted as evidence for \emph{strategic interaction} in the data.
+
+\section{Notation}
+\begin{itemize}[leftmargin=*]
+\item $X=[X_{\cdot,1}\;\cdots\;X_{\cdot,T}] \in \R^{N\times T}$: $N$ player signals over $T$ times.
+\item $\one=(1,\dots,1)^\top\in\R^N$.
+\item $\Delta_k = \{x\in\R^k_{\ge 0}:\;\one^\top x = 1\}$: simplex.
+\item $M_I, M_Z$: common-interest and zero-sum projectors in player space.
+\item $M^{(k)}_Z$: zero-sum projector in strategy space.
+\item $S\in\R^{N\times k}$: strategy archetypes (columns).
+\item $x(t)\in\Delta_k$: mixture at time $t$; $X_k = [x(1)\,\cdots\,x(T)]\in\R^{k\times T}$.
+\item $g(t)\in\R^k$: strategy-level signal at time $t$; $G=[g(1)\,\cdots\,g(T)]$.
+\end{itemize}
+
+\section{Common-interest and Zero-sum Subspaces}
+\subsection{Unweighted projectors}
+Let $\bar v = \tfrac{1}{N}\one^\top v$ denote the arithmetic mean. Define
+\begin{equation}
+\label{eq:unweighted-projectors}
+M_I \;=\; \frac{1}{N}\,\one\one^\top,\qquad
+M_Z \;=\; I - M_I.
+\end{equation}
+For any $v\in\R^N$, $v_I=M_Iv=\bar v\,\one$ is the \emph{common-interest} component and $v_Z=M_Zv=v-\bar v\,\one$ is the \emph{zero-sum} (mean-centered) component. Both $M_I$ and $M_Z$ are symmetric idempotent matrices and satisfy $M_I M_Z=0$, with $\operatorname{im}(M_I)=\operatorname{span}\{\one\}$ and $\operatorname{im}(M_Z)=\{\one\}^\perp$.
+
+\subsection{Weighted projectors}
+Let $w\in\R^N_{>0}$ and $D_w=\mathrm{diag}(w)$; define the weighted inner product $\langle u,v\rangle_w = u^\top D_w v$. The orthogonal projector onto $\operatorname{span}\{\one\}$ \emph{with respect to} $\langle\cdot,\cdot\rangle_w$ is
+\begin{equation}
+\label{eq:weighted-projectors}
+M_I^{(w)} \;=\; \one\,\pi_w^\top,\qquad
+\pi_w^\top \;=\; \frac{\one^\top D_w}{\one^\top D_w \one} \;=\; \frac{w^\top}{\sum_i w_i},
+\end{equation}
+so that $M_I^{(w)} v = (\pi_w^\top v)\,\one$ equals the vector with each entry the $w$-weighted mean of $v$. The weighted zero-sum projector is $M_Z^{(w)} = I - M_I^{(w)}$. One checks $D_w M_I^{(w)}=(M_I^{(w)})^\top D_w$ and likewise for $M_Z^{(w)}$, i.e., self-adjointness under $\langle\cdot,\cdot\rangle_w$.
+
+\subsection{Explicit Helmert (contrast) basis}
+A particularly convenient orthonormal change of variables is the \emph{Helmert} matrix $Q\in\R^{N\times N}$:
+\begin{align}
+&\text{First column: } q_1 \;=\; \frac{1}{\sqrt N}\,\one. \label{eq:helmert-q1}\\[3pt]
+&\text{For } k=2,\dots,N:\
+q_k \text{ has entries } \big(q_k\big)_i \;=\;
+\begin{cases}
+\frac{1}{\sqrt{k(k-1)}} & \text{if } i<k,\\[3pt]
+-\frac{k-1}{\sqrt{k(k-1)}} & \text{if } i=k,\\[3pt]
+0 & \text{if } i>k.
+\end{cases}
+\label{eq:helmert-qk}
+\end{align}
+Then $Q^\top Q=I$, $Q^\top \one = \sqrt{N}\,e_1$, and
+\begin{equation}
+M_I \;=\; q_1 q_1^\top \;=\; \frac{1}{N}\one\one^\top,\qquad
+M_Z \;=\; I - q_1 q_1^\top \;=\; \sum_{k=2}^N q_k q_k^\top.
+\end{equation}
+A weighted analogue is obtained by Gram–Schmidt using the $D_w$ inner product, with first vector $q^{(w)}_1=\one/\|\one\|_w$ where $\|\one\|_w^2=\one^\top D_w \one$.
+
+\paragraph{Worked example ($N=3$).}
+Using \eqref{eq:helmert-q1}–\eqref{eq:helmert-qk},
+\begin{equation}
+Q_3 \;=\;
+\begin{bmatrix}
+\frac{1}{\sqrt{3}} & \frac{1}{\sqrt{2}} & \frac{1}{\sqrt{6}} \\[5pt]
+\frac{1}{\sqrt{3}} & -\frac{1}{\sqrt{2}} & \frac{1}{\sqrt{6}} \\[5pt]
+\frac{1}{\sqrt{3}} & 0 & -\frac{2}{\sqrt{6}}
+\end{bmatrix},\qquad
+M_I \;=\; \frac{1}{3}
+\begin{bmatrix}
+1 & 1 & 1 \\ 1 & 1 & 1 \\ 1 & 1 & 1
+\end{bmatrix},\qquad
+M_Z \;=\; I - M_I.
+\end{equation}
+For $v=(p_1,p_2,p_3)^\top$,
+\begin{align}
+\tilde v \;=\; Q_3^\top v
+&= \begin{bmatrix}
+\frac{p_1+p_2+p_3}{\sqrt{3}}\\[3pt]
+\frac{p_1-p_2}{\sqrt{2}}\\[3pt]
+\frac{p_1+p_2-2p_3}{\sqrt{6}}
+\end{bmatrix},\qquad
+v_I \;=\; \frac{p_1+p_2+p_3}{3}\,\one,\qquad
+v_Z \;=\; v - v_I.
+\end{align}
+
+\section{From Time Series to Payoffs}
+\subsection{Static (profile) game}
+Let $Z=M_Z X$ (or $M_Z^{(w)}X$). Discretize each row of $Z$ into $b$ bins to form a joint \emph{profile} $a(t)\in\{1,\dots,b\}^N$. For each profile $a$, define a payoff vector
+\begin{equation}
+v(a) \;=\; \E\!\big[X_{\cdot,t+1}\mid a(t)=a\big],
+\end{equation}
+estimated empirically. At time $t$ set $v(t)=v\!\big(a(t)\big)$ and take $v_Z(t)=M_Z v(t)$ (or weighted).
+
+\subsection{Information-sharing (VAR) game}
+For each player $i$, consider two linear predictors of $X_{i,t}$ from past lags up to order $p$:
+\begin{align}
+\text{Self model: }\quad & \hat X_{i,t} = \sum_{\ell=1}^p \alpha_{i,\ell} X_{i,t-\ell} + u_{i,t},\\
+\text{Full model: }\quad & \hat X_{i,t} = \sum_{j=1}^N \sum_{\ell=1}^p \beta_{i,j,\ell} X_{j,t-\ell} \;+\; \sum_{m\in\mathcal{S}} \gamma_{i,m} s_m(t) \;+\; e_{i,t},
+\end{align}
+where $s_m(t)$ are optional seasonal regressors (e.g., $\sin/\cos$ at multiples of a base period). Let $\sigma^2_{i,\mathrm{self}}=\E[u_{i,t}^2]$ and $\sigma^2_{i,\mathrm{full}}=\E[e_{i,t}^2]$. Define the \emph{information-sharing payoff} for player $i$ as the reduction in mean squared error
+\begin{equation}
+v_i \;:=\; \sigma^2_{i,\mathrm{self}} - \sigma^2_{i,\mathrm{full}} \quad (\text{optionally normalized}).
+\end{equation}
+Finally set $v_Z = M_Z v$ (or $M_Z^{(w)}v$).
+
+\section{Strategies and Mixtures}
+Let $S=[s_1\,\cdots\,s_k]\in\R^{N\times k}$ be a strategy dictionary (e.g.\ via nonnegative matrix factorization). For each time $t$, infer $x(t)\in\Delta_k$ by projecting the observed signal onto the cone spanned by $S$ with a simplex constraint, e.g.
+\begin{equation}
+x(t)\;\in\;\argmin_{x\in\Delta_k}\;\|X_{\cdot,t}-Sx\|_2^2\quad (\text{optionally with nonnegativity on }S).
+\end{equation}
+Define the strategy-level signal $g(t)=S^\top v_Z(t)$ and collect $X_k=[x(1)\,\cdots\,x(T)]\in\R^{k\times T}$, $G=[g(1)\,\cdots\,g(T)]\in\R^{k\times T}$.
+
+\section{Replicator-compatible Operator}
+Let $M_Z^{(k)}=I_k-\tfrac{1}{k}\one\one^\top$ be the strategy-space centering matrix. We fit $A\in\R^{k\times k}$ via ridge regression:
+\begin{equation}
+\label{eq:ridge-A}
+\min_A \;\big\|M_Z^{(k)}G - A X_k\big\|_F^2 + \lambda\|A\|_F^2
+\qquad\Longrightarrow\qquad
+A \;=\; \big(M_Z^{(k)}G\big)X_k^\top\;\big(X_k X_k^\top + \lambda I\big)^{-1}.
+\end{equation}
+Row-centering $A\one=0$ (and optionally $\one^\top A=0$) enforces invariance of replicator dynamics under constant payoff shifts.
+
+\section{Replicator Dynamics, Jacobian, Nash, and ESS}
+The continuous-time replicator dynamics on $\Delta_k$ are
+\begin{equation}
+\dot x_i \;=\; x_i \Big((Ax)_i - \bar f(x)\Big),\qquad \bar f(x)=x^\top A x,\quad i=1,\dots,k.
+\end{equation}
+The Jacobian of the vector field $F_i(x)=x_i\big((Ax)_i - x^\top A x\big)$ at an interior point $x$ is
+\begin{equation}
+\frac{\partial F_i}{\partial x_j}(x) \;=\; \delta_{ij}\,\big((Ax)_i - x^\top A x\big) \;+\; x_i\Big(A_{ij} - (A^\top x)_j - (Ax)_j\Big).
+\end{equation}
+A mixed rest point $x^\star$ with support $J=\{i:x^\star_i>0\}$ satisfies
+\begin{equation}
+A_{JJ} x^\star_J = \alpha\,\one,\quad \one^\top x^\star_J=1,\qquad (Ax^\star)_\ell \le \alpha\ \ \forall \ell\notin J,
+\end{equation}
+i.e., $x^\star$ is a (symmetric) mixed Nash equilibrium. For (local) evolutionary stability one may use the following sufficient test.
+\begin{proposition}[Tangent-space test]
+If $x^\star$ is a mixed Nash equilibrium with support $J$ and the quadratic form
+\(
+y^\top \frac{A_{JJ}+A_{JJ}^\top}{2}\, y
+\)
+is negative definite on $\{y\in\R^{|J|}:\ \one^\top y=0\}$, then $x^\star$ is a (locally) evolutionary stable strategy for the replicator dynamics.
+\end{proposition}
+
+\section{Seasonal VAR Details}
+Let $S(t)$ collect seasonal regressors such as $\{\sin(2\pi m t/P),\cos(2\pi m t/P)\}_{m\in \mathcal{M}}$. For player $i$ the full regression is
+\begin{equation}
+X_{i,t} \;=\; \sum_{j=1}^N \sum_{\ell=1}^p \beta_{i,j,\ell} X_{j,t-\ell} \;+\; \gamma_i^\top S(t) \;+\; e_{i,t},
+\end{equation}
+with ridge penalty on $\beta,\gamma$. The information-sharing payoff $v_i$ is computed from the MSE reduction relative to the self-only regression. Center $v$ across players with $M_Z$ (or $M_Z^{(w)}$). See \cite{lutkepohl} for VAR practice.
+
+\section{IAAFT Surrogates and Significance}
+To assess whether an observed ESS arises from cross-player coupling rather than marginal autocorrelation, we generate IAAFT surrogates for each player series:
+\begin{itemize}[leftmargin=*]
+\item Each surrogate preserves the \emph{empirical amplitude distribution} and the \emph{power spectrum} of the original player series but destroys cross-player dependence.
+\item For each surrogate dataset, recompute payoffs, re-estimate $A$ via \eqref{eq:ridge-A}, and tally whether an ESS is found. The surrogate ESS rate provides a null benchmark.
+\end{itemize}
+IAAFT alternates phase randomization in the Fourier domain (matching the original magnitudes) with rank-order remapping to the original amplitudes until convergence \cite{schreiber-schmitz}.
+
+\section{Edge Cases and Identifiability}
+\begin{itemize}[leftmargin=*]
+\item If $X_{\cdot,t}=c_t\,\one$ (pure common mode), then $v_Z\equiv 0$ and the EGT signal is null by design.
+\item Replicator dynamics are invariant under adding the same constant to all payoffs; centering $A$ enforces this.
+\item Choice of $S$ matters; NMF/archetypes produce parts-based, interpretable strategies. PCA is acceptable but mixes signs; rectification may be used.
+\end{itemize}
+
+\section{Relation to Jessie \& Saari's Coordinate Systems}
+Jessie and Saari advocate analyzing \emph{classes} of games by decomposing each game into coordinates that separate individual incentives (\emph{``Nash''}), group/behavioral components, and kernel (payoff inflation/deflation), yielding a uniform methodology across formats \cite{jessie-saari}. In their words, a coordinate system ``explicitly separates each payoff into contributions being made to each feature,'' replacing ad hoc analysis with a systematic decomposition.\\[4pt]
+\emph{How ts2eg differs.} Our construction is \textbf{time-series first}. Rather than starting from a static payoff table and decomposing it, we:
+\begin{enumerate}[leftmargin=*]
+\item derive per-time payoff vectors from multivariate signals (static or predictive-gain definitions);
+\item isolate common-interest vs.\ zero-sum directions \emph{in player space} via ANOVA/Helmert at each time;
+\item map payoffs to a learned strategy dictionary $S$ to obtain strategy-level signals; and
+\item estimate a replicator-compatible operator $A$ by ridge, enabling ESS analysis with surrogate significance (IAAFT).
+\end{enumerate}
+Thus, while philosophically aligned with ``coordinate systems for games,'' ts2eg couples signal processing (VAR with seasonal regressors; IAAFT) and evolutionary dynamics through an explicit change of variables in player space.
+
+\section{Algorithms (summary)}
+\begin{enumerate}[leftmargin=*]
+\item Compute $M_I$/$M_Z$ (or weighted) and optionally a (weighted) Helmert basis using \eqref{eq:helmert-q1}–\eqref{eq:helmert-qk}.
+\item Build per-time payoffs $v(t)$ via static profiles or information-sharing; take $v_Z(t)=M_Z v(t)$.
+\item Learn strategies $S$ and mixtures $x(t)\in\Delta_k$.
+\item Form $g(t)=S^\top v_Z(t)$ and fit $A$ by ridge: $A=(M_Z^{(k)}G)X_k^\top(X_kX_k^\top+\lambda I)^{-1}$; enforce $A\one=0$.
+\item Enumerate supports to find mixed Nash equilibria; apply the tangent-space test for ESS.
+\item Generate IAAFT surrogates; re-estimate $A$; report ESS frequency.
+\end{enumerate}
+
+\section{Symbols (quick reference)}
+\begin{center}
+\begin{tabular}{ll}
+$X\in\R^{N\times T}$ & player signals (rows = players, cols = time) \\
+$M_I, M_Z$ & common-interest and zero-sum projectors \\
+$M_I^{(w)}, M_Z^{(w)}$ & weighted projectors (inner product $\langle\cdot,\cdot\rangle_w$) \\
+$Q$ & (weighted) Helmert matrix (orthonormal change of basis) \\
+$S\in\R^{N\times k}$ & strategy archetypes (columns) \\
+$x(t)\in\Delta_k$ & mixture on the simplex at time $t$ \\
+$g(t)=S^\top v_Z(t)$ & strategy-level signal \\
+$A\in\R^{k\times k}$ & replicator-compatible operator \\
+\end{tabular}
+\end{center}
+
+\begin{thebibliography}{9}
+\bibitem{monderer-shapley}
+D. Monderer and L. S. Shapley (1996).
+\newblock Potential Games.
+\newblock \emph{Games and Economic Behavior} 14(1):124--143.
+
+\bibitem{candogan}
+O. Candogan, I. Menache, A. Ozdaglar, and P. A. Parrilo (2011).
+\newblock Flows and Decompositions of Games: Harmonic and Potential Games.
+\newblock \emph{Mathematics of Operations Research} 36(3):474--503.
+
+\bibitem{hofbauer-sigmund}
+J. Hofbauer and K. Sigmund (1998).
+\newblock \emph{Evolutionary Games and Population Dynamics}.
+\newblock Cambridge University Press.
+
+\bibitem{sandholm}
+W. H. Sandholm (2010).
+\newblock \emph{Population Games and Evolutionary Dynamics}.
+\newblock MIT Press.
+
+\bibitem{lutkepohl}
+H. L\"{u}tkepohl (2005).
+\newblock \emph{New Introduction to Multiple Time Series Analysis}.
+\newblock Springer.
+
+\bibitem{schreiber-schmitz}
+T. Schreiber and A. Schmitz (2000).
+\newblock Surrogate time series.
+\newblock \emph{Physica D} 142(3--4):346--382.
+
+\bibitem{jessie-saari}
+D. T. Jessie and D. G. Saari (2019).
+\newblock \emph{Coordinate Systems for Games: Simplifying the ``me'' and ``we'' Interactions}.
+\newblock Springer, in \emph{Static \& Dynamic Game Theory: Foundations \& Applications}.
+\end{thebibliography}
+
+\end{document}
