@@ -37,7 +37,7 @@ This note explains how to apply the `gamify-timeseries` pipeline to **coalitions
 1. **Build `X`** (shares or normalized intensities). Handle seasonality with fixed effects or differencing if needed.  
 2. **Choose `v`**: `growth_payoffs` for counts or `info_gain_payoffs` for outcome‑driven analysis.  
 3. **Learn `S`** by NMF (3–6 archetypes typical). Normalize columns.  
-4. **Estimate** `A` with `estimate_A_from_series(S, X, v, k, lambda_)`.  
+4. **Estimate** `A` with `estimate_A_from_series(S, X, v, k, ridge)`.  
 5. **Analyze**: fit quality \(R^2\); symmetric vs. skew parts of \(A\); **ESS** with `find_ESS(A)`; rolling‑window stability.  
 6. **Validate**:  
    - **Nulls**: circular row shifts; block bootstrap; permute target \(J\).  
@@ -95,7 +95,7 @@ v = growth_payoffs(counts, dt=1.0)        # or: v = info_gain_payoffs(X, J, ridg
 X = counts / (counts.sum(axis=0, keepdims=True) + 1e-12)
 
 # Learn S (NMF with column normalization), then:
-est = estimate_A_from_series(S, X, v, k=S.shape[1], lambda_=1e-2)
+est = estimate_A_from_series(S, X, v, k=S.shape[1], ridge=1e-2)
 A = est["A"]
 ess = [r for r in find_ESS(A) if r["is_ess"]]
 ```

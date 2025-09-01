@@ -68,7 +68,7 @@ from gameify_timeseries import nmf_on_X, value_gradient_payoffs, estimate_A_from
 v = value_gradient_payoffs(X, J_future=roic_lead, ridge=1e-2)  # or distributional Δlog shares
 
 S, H = nmf_on_X(X, k=3, iters=300, seed=1)
-est = estimate_A_from_series(S, X, v, k=3, lambda_=1e-2)
+est = estimate_A_from_series(S, X, v, k=3, ridge=1e-2)
 A, R2 = est['A'], est['R2']
 ess = [r for r in find_ESS(A) if r['is_ess']]
 ```

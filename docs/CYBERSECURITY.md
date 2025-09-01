@@ -58,7 +58,7 @@ v = info_gain_payoffs(X, J, ridge=1e-2, window=168)  # weekly window (hourly dat
 
 # Learn S (NMF), estimate A, analyze
 S = nmf_on_X(X, k=4)  # any nonnegative NMF; normalize columns
-est = estimate_A_from_series(S, X, v, k=4, lambda_=1e-2)
+est = estimate_A_from_series(S, X, v, k=4, ridge=1e-2)
 A = est['A']
 ess = [r for r in find_ESS(A) if r['is_ess']]
 ```

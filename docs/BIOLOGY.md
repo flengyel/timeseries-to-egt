@@ -61,7 +61,7 @@ If a scalar endpoint exists (e.g., total biomass at horizon `H`, metabolite conc
    - Prefer `growth_payoffs` when counts exist; otherwise `info_gain_payoffs` to a meaningful endpoint `J`.\n
 
 4. **Fit & analyze**\n
-   - `est = estimate_A_from_series(S, X, v, k, lambda_)`.\n
+   - `est = estimate_A_from_series(S, X, v, k, ridge)`.\n
    - Examine `R²` (held-out if possible), `||A_s||` vs `||A_a||`, and **ESS** via `find_ESS(A)`.\n
 
 5. **Validate**\n
@@ -98,7 +98,7 @@ from gameify_timeseries import growth_payoffs, estimate_A_from_series, find_ESS
 v = growth_payoffs(counts, dt=1.0)
 X = counts / (counts.sum(axis=0, keepdims=True) + 1e-12)   # shares for strategy inference
 S = nmf_on_X(X, k=4)  # any NMF; normalize columns
-est = estimate_A_from_series(S, X, v, k=4, lambda_=1e-2)
+est = estimate_A_from_series(S, X, v, k=4, ridge=1e-2)
 A = est['A']
 ess = [r for r in find_ESS(A) if r['is_ess']]
 ```

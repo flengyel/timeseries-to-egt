@@ -41,7 +41,7 @@ Interpretation: `v_i(t)` is the marginal contribution of item *i* to `J_future` 
 
 ```python
 from gameify_timeseries import estimate_A_from_series, find_ESS
-est = estimate_A_from_series(S, X_perp, v, k=K, lambda_=1e-2)
+est = estimate_A_from_series(S, X_perp, v, k=K, ridge=1e-2)
 A = est["A"]
 ess = [r for r in find_ESS(A, tol=1e-8, max_support=K) if r["is_ess"]]
 ```
