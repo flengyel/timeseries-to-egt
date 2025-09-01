@@ -35,6 +35,8 @@ def weighted_projectors(weights: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         raise ValueError("weights must be positive and finite")
     N = w.size
     denom = float(np.sum(w))
+    if denom <= 0:
+        raise ValueError("sum(weights) must be > 0")
     M_Iw = np.ones((N, 1)) @ (w.reshape(1, N) / denom)
     M_Zw = np.eye(N) - M_Iw
     return M_Iw, M_Zw
@@ -201,8 +203,11 @@ def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray,
     Gc = MZ_k @ Gk
     Cxx = Xk @ Xk.T
     Cgx = Gc @ Xk.T
-    A = Cgx @ np.linalg.solve(Cxx + lambda_ * np.eye(k), np.eye(k))
-    A = MZ_k @ A
+    try:
+        A = Cgx @ np.linalg.solve(Cxx + lambda_ * np.eye(k), np.eye(k))
+    except np.linalg.LinAlgError:
+        A = Cgx @ np.linalg.pinv(Cxx + lambda_ * np.eye(k))
+    A = MZ_k @ A @ MZ_k
 
     Ghat = A @ Xk
     resid = Gc - Ghat

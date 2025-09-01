@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+*.zip
+*.tar
+*.tar.gz
+*.tgz

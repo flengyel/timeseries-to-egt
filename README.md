@@ -91,6 +91,8 @@ print("Surrogate ESS rate:", sig["ess_rate"])
 
 ---
 
+See derivations in [docs/ts2eg_math_background.tex](docs/ts2eg_math_background.tex).
+
 ## Why this exists
 
 Many “inverse EGT” papers start from observed **strategy frequencies**. Real datasets are often **player‑level time series** instead. This repo provides a **coordinate pipeline** from player signals to strategies and payoffs:
@@ -111,7 +113,7 @@ Common‑interest projector \(M_I=\tfrac{1}{N}\mathbf1\mathbf1^\top\); centering
 
 **1) Payoff induction from time series.**
 - **Static profiles:** discretize \(M_Z X\) (e.g., terciles) and map joint profiles to \(\mathbb E[X_{t+1}\mid a_t]\); keep \(M_I/M_Z\) components.
-- **Information sharing:** per player \(i\), baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
+- **Information sharing (VAR = Vector Autoregression):** per player \(i\), baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
 
 **2) Strategies and mixtures.**  
 Learn \(S\in\mathbb R^{N\times k}\) (NMF/archetypes recommended). Infer \(x(t)\in\Delta_k\) by projecting \(X_{\cdot,t}\) onto cone\((S)\) with a simplex constraint.
