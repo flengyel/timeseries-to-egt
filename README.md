@@ -1,6 +1,8 @@
 # timeseries-to-egt (ts2eg): From Multivariate Time Series to Evolutionary Games
 
-This project **interprets a multivariate time series as an evolutionary (normal‑form) game** and then analyzes it with **replicator dynamics** to test for **Evolutionarily Stable Strategies (ESS)**. Concretely:
+This project **interprets a multivariate time series as an evolutionary (normal‑form) game** and then analyzes it with **replicator dynamics** to test for **Evolutionarily Stable Strategies (ESS)**.
+
+Concretely:
 
 - From signals \(X \in \mathbb{R}^{N\times T}\), we construct per‑time **payoff vectors** and decompose them into **common‑interest** vs **zero‑sum** directions.
 - We learn a small set of **strategies** \(S\in\mathbb{R}^{N\times k}\) and infer **mixtures** \(x(t)\in\Delta_k\).
@@ -54,7 +56,7 @@ Python \(\ge\) 3.9 recommended. CI runs `pytest` on 3.9–3.12.
 
 ---
 
-## Quick start (package‑only)
+## Quick start
 
 ```python
 import numpy as np
@@ -106,7 +108,7 @@ Many “inverse EGT” papers start from observed **strategy frequencies**. Real
 
 ---
 
-## Pipeline (precise)
+## Pipeline
 
 **0) Mean/contrast geometry (ANOVA/Helmert).**  
 Common‑interest projector \(M_I=\tfrac{1}{N}\mathbf1\mathbf1^\top\); centering \(M_Z=I-M_I\). Optional Helmert basis (first column \(\mathbf1/\sqrt N\)).
@@ -171,7 +173,7 @@ surrogate_ess_frequency(...) -> {"ess_rate": float, ...}
 
 ---
 
-## Applications & demos (selection)
+## Applications & demos
 
 - **Finance:** capital–labor, factor rotation & governance.  
 - **Biology:** ecology/microbiology/cancer per‑capita growth, interaction fields, ESS.  
