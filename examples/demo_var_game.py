@@ -16,9 +16,14 @@ def main():
     ap.add_argument("--p", type=int, default=2)
     ap.add_argument("--k", type=int, default=3)
     ap.add_argument("--ridge", type=float, default=1e-3)
+    ap.add_argument("--seed", type=int, default=0, help="PRNG seed for reproducibility")
     args = ap.parse_args()
 
-    rng = np.random.default_rng(0)
+
+    import random
+    random.seed(args.seed)
+
+    rng = np.random.default_rng(args.seed)
     t = np.arange(args.T)
     season = 0.6*np.sin(2*np.pi*t/12)
     common = 0.3*np.sin(2*np.pi*t/60)
@@ -37,7 +42,7 @@ def main():
     )
 
     X0 = (X - X.min(axis=1, keepdims=True)) / (np.ptp(X,axis=1, keepdims=True) + 1e-9)
-    S, H = gm.nmf_on_X(X0, k=args.k, iters=200, seed=1, normalize="l2")
+    S, H = gm.nmf_on_X(X0, k=args.k, iters=200, seed=args.seed, normalize="l2")
 
     X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
     A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=args.k, ridge=args.ridge)["A"]
