@@ -15,7 +15,7 @@ Game constructions:
   - var_information_sharing_game(X, p, ...): Option B (VAR-based "share" profiles -> gains)
 
 EGT add-ons:
-  - estimate_A_from_series(S, X, v, k, ridge): fit k×k payoff operator A from series
+  - estimate_A_from_series(S, X, v, k, lambda_): fit k×k payoff operator A from series
   - find_ESS(A, ...): enumerate mixed Nash candidates and test ESS via replicator Jacobian
 
 Finance & Bio helpers:
@@ -237,14 +237,14 @@ def _infer_membership_via_pg(S: np.ndarray, y: np.ndarray, iters: int = 200) -> 
         x = _project_to_simplex(x - eta * grad)
     return x
 
-def estimate_A_from_series(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, ridge: float = 0.0):
+def estimate_A_from_series(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, lambda_: float = 0.0):
     """
     Estimate a k×k payoff operator A for a symmetric population game from:
       - S: strategy basis (N×k), columns s_i (prefer nonnegative / normalized)
       - X: data series (N×T), per-player signals
       - v: payoff series (N×T), per-player instantaneous payoffs (e.g., Option A/B output)
       - k: number of strategies (= S.shape[1])
-      - ridge: ridge regularization
+      - lambda_: ridge regularization
 
     Pipeline:
       1) vZ = M_Z v (zero-sum across players).
@@ -290,11 +290,8 @@ def estimate_A_from_series(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, 
     Gc = MZ_k @ Gk
     Cxx = Xk @ Xk.T
     Cgx = Gc @ Xk.T
-    try:
-        A = Cgx @ np.linalg.solve(Cxx + ridge * np.eye(k), np.eye(k))
-    except np.linalg.LinAlgError:
-        A = Cgx @ np.linalg.pinv(Cxx + ridge * np.eye(k))
-    A = MZ_k @ A @ MZ_k  # enforce row/column centering
+    A = Cgx @ np.linalg.solve(Cxx + lambda_ * np.eye(k), np.eye(k))
+    A = MZ_k @ A  # enforce row-centering
 
     # Fit diagnostics
     Ghat = A @ Xk
@@ -586,7 +583,7 @@ if __name__ == "__main__":
     S = np.abs(U[:, :k])
     v = X  # placeholder payoff
 
-    est = estimate_A_from_series(S, X, v, k=k, ridge=1e-3)
+    est = estimate_A_from_series(S, X, v, k=k, lambda_=1e-3)
     A = est["A"]
     print("A shape:", A.shape, "R2:", round(est["R2"], 3))
 

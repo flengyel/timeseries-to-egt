@@ -40,7 +40,7 @@ def main():
     S, H = gm.nmf_on_X(X0, k=args.k, iters=200, seed=1, normalize="l2")
 
     X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
-    A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=args.k, lambda_=args.ridge)["A"]
+    A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=args.k, ridge=args.ridge)["A"]
 
     res = gm.find_ESS(A, tol=1e-8, max_support=args.k)
     print("Nash:", sum(r["is_nash"] for r in res), " ESS:", sum(r["is_ess"] for r in res))

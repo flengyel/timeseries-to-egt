@@ -158,8 +158,7 @@ def var_information_sharing_game_seasonal(
 
 # -------- (3) Weighted A-estimation + IAAFT surrogates & harness --------
 
-def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int,
-                                    lambda_: float = 0.0, weights: np.ndarray | None = None):
+def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, ridge: float = 0.0, weights: np.ndarray | None = None):
     """
     Weighted variant of gm.estimate_A_from_series:
       1) vZ = M_Z v (weighted if weights provided).
@@ -204,9 +203,9 @@ def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray,
     Cxx = Xk @ Xk.T
     Cgx = Gc @ Xk.T
     try:
-        A = Cgx @ np.linalg.solve(Cxx + lambda_ * np.eye(k), np.eye(k))
+        A = Cgx @ np.linalg.solve(Cxx + ridge * np.eye(k), np.eye(k))
     except np.linalg.LinAlgError:
-        A = Cgx @ np.linalg.pinv(Cxx + lambda_ * np.eye(k))
+        A = Cgx @ np.linalg.pinv(Cxx + ridge * np.eye(k))
     A = MZ_k @ A @ MZ_k
 
     Ghat = A @ Xk
@@ -243,8 +242,7 @@ def iaaft_matrix(X: np.ndarray, n_iter: int = 100, seed: int | None = None) -> n
         Y[i] = iaaft(X[i], n_iter=n_iter, rng=rng)
     return Y
 
-def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, k: int,
-                            lambda_: float = 0.0, num_surrogates: int = 50, iaaft_iters: int = 100,
+def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, k: int, ridge: float = 0.0, num_surrogates: int = 50, iaaft_iters: int = 100,
                             tol: float = 1e-8, max_support: int | None = None,
                             weights: np.ndarray | None = None, seed: int = 0):
     """
@@ -262,7 +260,7 @@ def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, 
         seed_s = int(rng.integers(0, 2**32 - 1))
         Xs = iaaft_matrix(X, n_iter=iaaft_iters, seed=seed_s)
         vs = iaaft_matrix(v, n_iter=iaaft_iters, seed=(seed_s ^ 0x9e3779b1))
-        est = estimate_A_from_series_weighted(S, Xs, vs, k=k, lambda_=lambda_, weights=weights)
+        est = estimate_A_from_series_weighted(S, Xs, vs, k=k, ridge=lambda_, weights=weights)
         A = est["A"]
         R2_list.append(est["R2"])
         res = gm.find_ESS(A, tol=tol, max_support=max_support)
