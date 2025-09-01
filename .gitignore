@@ -8,3 +8,5 @@ dist/
 *.tar
 *.tar.gz
 *.tgz
+
+*.bak
