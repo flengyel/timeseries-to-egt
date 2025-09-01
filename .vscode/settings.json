@@ -1,0 +1,8 @@
+{
+  // Pin the interpreter for this workspace (Windows)
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  // Auto-activate venv in new terminals
+  "python.terminal.activateEnvironment": true,
+  // Make Pylance scan only this workspace (faster, fewer false alarms)
+  "python.analysis.diagnosticMode": "workspace"
+}
