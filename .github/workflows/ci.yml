@@ -36,4 +36,4 @@ jobs:
         if: matrix.python-version == '3.12'
         env:
           MPLBACKEND: Agg
-        run: python examples/demo_var_game.py --N 4 --T 120 --p 2 --k 3 --ridge 1e-3
+        run: python examples/demo_var_game.py --N 4 --T 120 --p 2 --k 3 --ridge 1e-3 --seed 0
