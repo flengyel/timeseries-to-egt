@@ -30,3 +30,10 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+
+      - name: Smoke demo (only on 3.12)
+        if: matrix.python-version == '3.12'
+        env:
+          MPLBACKEND: Agg
+        run: python examples/demo_var_game.py --N 4 --T 120 --p 2 --k 3 --ridge 1e-3
