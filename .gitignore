@@ -9,6 +9,8 @@ dist/
 *.tar.gz
 *.tgz
 
+.venv/
+
 *.bak
 
 src/ts2eg.egg-info/
