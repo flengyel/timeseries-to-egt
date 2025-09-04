@@ -14,3 +14,5 @@ dist/
 *.bak
 
 src/ts2eg.egg-info/
+artifacts/
+run_*.log
