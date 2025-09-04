@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+"""
+Fix notebooks by:
+  1) Removing legacy 'gamify_timeseries.py' / 'egt_extensions' fallbacks.
+  2) Using ts2eg-only imports (from ts2eg.core).
+  3) Ensuring X exists before the first nmf_on_X(...) call.
+  4) Renaming keyword 'lambda_=' -> 'ridge='.
+  5) Ensuring S exists before estimate_A_from_series/find_ESS (and ensuring X first).
+
+Idempotent and safe to re-run.
+"""
+from __future__ import annotations
+import re
+from pathlib import Path
+import nbformat as nbf
+
+ROOT = Path(__file__).resolve().parents[1]
+NB_DIR = ROOT / "notebooks"
+
+# Heuristics
+IMPORT_MARKER = re.compile(r"^\s*#\s*---\s*Canonical imports", re.I | re.M)
+HAS_LEGACY    = re.compile(r"\bgamify_timeseries\b|egt_extensions\b", re.I | re.M)
+CALLS_NMF     = re.compile(r"\bnmf_on_X\s*\(", re.M)
+CALLS_EST     = re.compile(r"\bestimate_A_from_series\s*\(", re.M)
+CALLS_FIND    = re.compile(r"\bfind_ESS\s*\(", re.M)
+DEF_X         = re.compile(r"^\s*X\s*=", re.M)
+RE_LAMBDA_KW  = re.compile(r"(?<![A-Za-z0-9_])lambda_\s*=")
+
+CLEAN_IMPORTS = """# --- Canonical imports (ts2eg only) ---
+import ts2eg as gm
+from ts2eg.core import nmf_on_X, growth_payoffs, estimate_A_from_series, find_ESS
+try:
+    from ts2eg import extensions as ext
+except Exception:
+    ext = None  # optional
+"""
+
+X_GUARD = """# Ensure feature matrix X exists before nmf_on_X
+import numpy as _np
+if 'X' not in globals():
+    if 'v_growth' in globals():
+        X = _np.asarray(v_growth, dtype=float)
+    elif 'counts' in globals():
+        X = _np.asarray(counts, dtype=float)
+    else:
+        raise NameError("X is undefined; expected v_growth or counts earlier in the notebook.")
+"""
+
+S_GUARD = """# Ensure strategy basis S exists before estimation (and ensure X first)
+import numpy as _np
+if 'X' not in globals():
+    if 'v_growth' in globals():
+        X = _np.asarray(v_growth, dtype=float)
+    elif 'counts' in globals():
+        X = _np.asarray(counts, dtype=float)
+    else:
+        raise NameError("X is undefined; expected v_growth or counts earlier in the notebook.")
+try:
+    S  # noqa: F821
+except NameError:
+    try:
+        K = int(globals().get('K', 3))
+    except Exception:
+        K = 3
+    S, H = nmf_on_X(X, k=K, iters=50, seed=1, normalize='l2')
+"""
+
+def notebooks():
+    return sorted(NB_DIR.glob("*.ipynb"))
+
+def _update_tagged_guard(nb, tag: str, new_source: str) -> bool:
+    for c in nb.cells:
+        if c.get("cell_type") != "code": 
+            continue
+        tags = set((c.get("metadata", {}) or {}).get("tags") or [])
+        if tag in tags:
+            c["source"] = new_source
+            return True
+    return False
+
+def rewrite_imports(nb) -> bool:
+    """Replace legacy 'canonical imports' block (or any legacy refs) with CLEAN_IMPORTS."""
+    changed = False
+    for c in nb.cells:
+        if c.get("cell_type") != "code":
+            continue
+        src = c.get("source","") or ""
+        if IMPORT_MARKER.search(src) or HAS_LEGACY.search(src):
+            c["source"] = CLEAN_IMPORTS
+            changed = True
+            break
+    return changed
+
+def insert_x_guard(nb) -> bool:
+    """Insert/refresh X_GUARD right before first nmf_on_X if X not pre-assigned anywhere."""
+    # If X is explicitly assigned anywhere, skip
+    for c in nb.cells:
+        if c.get("cell_type") == "code" and DEF_X.search(c.get("source","") or ""):
+            return False
+    # Refresh existing tagged guard if present
+    if _update_tagged_guard(nb, "ci-ensure-X", X_GUARD):
+        return True
+    # Find first nmf_on_X
+    for i, c in enumerate(nb.cells):
+        if c.get("cell_type") != "code":
+            continue
+        if CALLS_NMF.search(c.get("source","") or ""):
+            guard = nbf.v4.new_code_cell(X_GUARD, metadata={"tags": ["ci-ensure-X"]})
+            nb.cells.insert(i, guard)
+            return True
+    return False
+
+def insert_s_guard(nb) -> bool:
+    """Insert/refresh S_GUARD right before first estimate_A_from_series or find_ESS."""
+    # Refresh existing tagged guard if present
+    if _update_tagged_guard(nb, "ci-ensure-S", S_GUARD):
+        return True
+    idx = None
+    for i, c in enumerate(nb.cells):
+        if c.get("cell_type") != "code":
+            continue
+        src = c.get("source","") or ""
+        if CALLS_EST.search(src) or CALLS_FIND.search(src):
+            idx = i
+            break
+    if idx is None:
+        return False
+    guard = nbf.v4.new_code_cell(S_GUARD, metadata={"tags": ["ci-ensure-S"]})
+    nb.cells.insert(idx, guard)
+    return True
+
+def rename_lambda_kw(nb) -> bool:
+    """Rename keyword lambda_= -> ridge= in all code cells."""
+    changed = False
+    for c in nb.cells:
+        if c.get("cell_type") != "code":
+            continue
+        src = c.get("source","") or ""
+        new = RE_LAMBDA_KW.sub("ridge=", src)
+        if new != src:
+            c["source"] = new
+            changed = True
+    return changed
+
+def main():
+    changed_any = False
+    for p in notebooks():
+        nb = nbf.read(p, as_version=4)
+        ci = rewrite_imports(nb)
+        cx = insert_x_guard(nb)
+        cs = insert_s_guard(nb)
+        cr = rename_lambda_kw(nb)
+        if ci or cx or cs or cr:
+            nbf.write(nb, p)
+            changed_any = True
+            flags = []
+            if ci: flags.append("imports")
+            if cx: flags.append("X-guard")
+            if cs: flags.append("S-guard")
+            if cr: flags.append("ridge")
+            print(f"[patched] {p.name}: {', '.join(flags)}")
+        else:
+            print(f"[ok] {p.name}: no change")
+    if not changed_any:
+        print("No modifications needed.")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,49 @@
+name: Notebooks (fast)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  notebooks:
+    name: Run fast notebooks (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Create writable /mnt/data (for stub CSVs)
+        run: |
+          sudo mkdir -p /mnt/data
+          sudo chmod 777 /mnt/data
+
+      - name: Install package and notebook deps
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+          python -m pip install -r requirements-notebooks.txt
+
+      - name: Normalize notebooks for CI (bootstrap + tags)
+        run: |
+          python -m pip install nbformat
+          python scripts/nb_patch_ci.py
+
+      - name: Run fast notebooks
+        env:
+          TS2EG_CI: "1"
+        run: |
+          python scripts/run_notebooks.py --tag fast --timeout 180
+
+      - name: Upload executed notebooks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notebooks-executed
+          path: artifacts/notebooks/*.executed.ipynb
