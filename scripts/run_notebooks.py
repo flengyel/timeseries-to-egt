@@ -17,7 +17,7 @@ from pathlib import Path
 import nbformat as nbf
 from nbconvert.preprocessors import ExecutePreprocessor
 
-# Windows: ensure ZMQ works with asyncio by using the Selector policy
+# Host-side: ensure ZMQ works with asyncio on Windows by using the Selector policy
 if platform.system() == "Windows":
     try:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -73,6 +73,13 @@ def inject_recovery_cells(nb) -> int:
 PREAMBLE = r"""# CI preamble (injected)
 import os, random, numpy as np, socket
 import pandas as pd
+import asyncio, platform
+# Kernel-side: enforce Windows selector loop to keep ZMQ happy
+if platform.system() == "Windows":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
 os.environ.setdefault("TS2EG_CI", "1")
 os.environ["PYTHONHASHSEED"] = "0"
 random.seed(0); np.random.seed(0)
