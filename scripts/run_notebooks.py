@@ -73,13 +73,30 @@ def inject_recovery_cells(nb) -> int:
 PREAMBLE = r"""# CI preamble (injected)
 import os, random, numpy as np, socket
 import pandas as pd
-import asyncio, platform
+import asyncio, platform, importlib
 # Kernel-side: enforce Windows selector loop to keep ZMQ happy
 if platform.system() == "Windows":
     try:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     except Exception:
         pass
+
+# Resolve ts2eg symbols used unqualified in notebooks
+def _bind(name):
+    try:
+        import ts2eg, importlib
+        candidates = [ts2eg, 'ts2eg.core', 'ts2eg.payoffs', 'ts2eg.features',
+                      'ts2eg.transforms', 'ts2eg.pipeline', 'ts2eg.ops']
+        for mod in candidates:
+            m = mod if not isinstance(mod, str) else importlib.import_module(mod)
+            if hasattr(m, name):
+                globals()[name] = getattr(m, name); return True
+    except Exception:
+        pass
+    return False
+for _fn in ('growth_payoffs',):
+    _bind(_fn)
+
 os.environ.setdefault("TS2EG_CI", "1")
 os.environ["PYTHONHASHSEED"] = "0"
 random.seed(0); np.random.seed(0)
