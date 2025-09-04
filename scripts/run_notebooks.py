@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from __future__ import annotations
-import argparse, os, sys, socket, time, platform, asyncio, re
+import argparse, os, sys, socket, time, platform, asyncio, re, traceback
 from pathlib import Path
 import nbformat as nbf
 from nbconvert.preprocessors import ExecutePreprocessor
@@ -119,7 +119,17 @@ def execute_one(path: Path, timeout: int) -> None:
         kernel_name=nb.metadata.get("kernelspec", {}).get("name", "python3"),
         allow_errors=False
     )
-    ep.preprocess(nb, {"metadata": {"path": str(ROOT)}})
+    try:
+        ep.preprocess(nb, {"metadata": {"path": str(ROOT)}})
+    except Exception as e:
+        failed = OUT_DIR / (path.stem + ".failed.ipynb")
+        try:
+            nbf.write(nb, failed)
+            print(f"[error] saved failed state to {failed}", file=sys.stderr)
+        except Exception:
+            print("[warn] could not save failed notebook state", file=sys.stderr)
+        print(f"[error] {type(e).__name__}: {e}", file=sys.stderr)
+        raise
     out = OUT_DIR / (path.stem + ".executed.ipynb")
     nbf.write(nb, out)
     print(f"[ok] executed: {path} -> {out}")
