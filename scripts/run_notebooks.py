@@ -9,6 +9,8 @@ Usage:
 Notes:
 - Injects a CI preamble cell (seeds, TS2EG_CI=1, network block).
 - Inserts recovery cells after any `%reset`-like use to restore imports/seeds.
+- Inserts guard cells before any code cell referencing `X` to define it from
+  `counts`/`v_growth` when absent.
 - Fails on any execution error (return code != 0).
 """
 from __future__ import annotations
@@ -44,10 +46,7 @@ RESET_PATTERNS = (
 )
 
 def inject_recovery_cells(nb) -> int:
-    """
-    After any reset-like cell, insert a tiny recovery cell that restores
-    imports, seeds, and the network block.
-    """
+    """After any reset-like cell, insert a tiny recovery cell that restores imports, seeds, and the network block."""
     inserted = 0
     i = 0
     while i < len(nb.cells):
@@ -70,10 +69,37 @@ def inject_recovery_cells(nb) -> int:
         i += 1
     return inserted
 
+def inject_x_guards(nb) -> int:
+    """Before any cell that references a free name 'X', insert a guard cell that defines X from counts or v_growth if missing."""
+    inserted = 0
+    pat_use = re.compile(r'(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])')
+    for i in range(len(nb.cells) - 1, -1, -1):
+        c = nb.cells[i]
+        if c.get("cell_type") != "code":
+            continue
+        src = c.get("source", "") or ""
+        if not pat_use.search(src):
+            continue
+        guard_src = (
+            "import numpy as _np\n"
+            "if 'X' not in globals():\n"
+            "    if 'counts' in globals():\n"
+            "        X = _np.asarray(counts, dtype=float)\n"
+            "    elif 'v_growth' in globals():\n"
+            "        X = _np.asarray(v_growth, dtype=float)\n"
+            "    else:\n"
+            "        raise NameError('X is undefined (no counts/v_growth available)')\n"
+        )
+        guard = nbf.v4.new_code_cell(guard_src, metadata={"tags": ["ci-ensure-X"]})
+        nb.cells.insert(i, guard)
+        inserted += 1
+    return inserted
+
 PREAMBLE = r"""# CI preamble (injected)
 import os, random, numpy as np, socket
 import pandas as pd
 import asyncio, platform, importlib
+
 # Kernel-side: enforce Windows selector loop to keep ZMQ happy
 if platform.system() == "Windows":
     try:
@@ -81,21 +107,10 @@ if platform.system() == "Windows":
     except Exception:
         pass
 
-# Resolve ts2eg symbols used unqualified in notebooks
-def _bind(name):
-    try:
-        import ts2eg, importlib
-        candidates = [ts2eg, 'ts2eg.core', 'ts2eg.payoffs', 'ts2eg.features',
-                      'ts2eg.transforms', 'ts2eg.pipeline', 'ts2eg.ops']
-        for mod in candidates:
-            m = mod if not isinstance(mod, str) else importlib.import_module(mod)
-            if hasattr(m, name):
-                globals()[name] = getattr(m, name); return True
-    except Exception:
-        pass
-    return False
-for _fn in ('growth_payoffs',):
-    _bind(_fn)
+# Headless plotting and plt shim (some notebooks forget 'import matplotlib.pyplot as plt')
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 os.environ.setdefault("TS2EG_CI", "1")
 os.environ["PYTHONHASHSEED"] = "0"
@@ -113,6 +128,8 @@ def execute_one(path: Path, timeout: int) -> None:
     nb.cells.insert(0, pre)
     # Insert recovery cells after any %reset / reset magic
     inject_recovery_cells(nb)
+    # Insert X-guards before any cell that references X
+    inject_x_guards(nb)
 
     ep = ExecutePreprocessor(
         timeout=timeout,
