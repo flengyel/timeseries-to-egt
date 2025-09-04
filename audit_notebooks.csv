@@ -1,0 +1,8 @@
+file,ci_tag,import_ts2eg,seed_numpy,seed_python,ts2eg_ci_env,bootstrap_top,lambda_param,np_ptp_func,attr_ptp_bad,internet
+notebooks\BIO_DEMO.ipynb,None,True,True,False,False,True,True,False,False,False
+notebooks\CYBER_DEMO.ipynb,None,True,True,False,False,True,True,False,False,False
+notebooks\egt_timeseries_demo.ipynb,None,True,True,False,False,False,True,False,False,False
+notebooks\FINANCE_DEMO.ipynb,None,True,True,False,False,False,True,False,False,False
+notebooks\FIRM_DEMO.ipynb,None,True,False,False,False,False,True,False,False,False
+notebooks\PROTEST_DEMO.ipynb,None,True,True,False,False,False,True,False,False,False
+notebooks\SOCIO_DEMO.ipynb,None,True,True,False,False,False,True,False,False,False
