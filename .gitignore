@@ -16,3 +16,4 @@ dist/
 src/ts2eg.egg-info/
 artifacts/
 run_*.log
+data/*.csv
