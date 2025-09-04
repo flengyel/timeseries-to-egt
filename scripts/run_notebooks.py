@@ -1,18 +1,11 @@
 #!/usr/bin/env python
-"""
-Execute notebooks tagged ts2eg_ci == 'fast' by default, headless, no network.
-Writes executed copies under artifacts/notebooks/*.executed.ipynb.
-
-Usage:
-  python scripts/run_notebooks.py [--tag fast|slow|skip] [--timeout 120]
-"""
 from __future__ import annotations
 import argparse, os, sys, socket, time, platform, asyncio, re
 from pathlib import Path
 import nbformat as nbf
 from nbconvert.preprocessors import ExecutePreprocessor
 
-# Host-side: ensure ZMQ works with asyncio on Windows by using the Selector policy
+# Host-side Windows event loop policy (ZMQ)
 if platform.system() == "Windows":
     try:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -28,10 +21,8 @@ def load_notebooks():
     return sorted(NB_DIR.glob("*.ipynb"))
 
 def wants(nb, wanted_tag: str) -> bool:
-    tag = (nb.metadata or {}).get("ts2eg_ci", "fast")
-    return tag == wanted_tag
+    return (nb.metadata or {}).get("ts2eg_ci", "fast") == wanted_tag
 
-# Detect resets that clear namespace
 RESET_PATTERNS = (
     r"^\s*%reset\b",
     r"get_ipython\(\)\.magic\(\s*[\"']reset",
@@ -84,9 +75,9 @@ def inject_x_guards(nb) -> int:
 PREAMBLE = r"""# CI preamble (injected)
 import os, random, numpy as np, socket
 import pandas as pd
-import asyncio, platform, importlib
+import asyncio, platform
 
-# Kernel-side: enforce Windows selector loop to keep ZMQ happy
+# Kernel-side Windows selector loop for ZMQ
 if platform.system() == "Windows":
     try:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -102,7 +93,7 @@ os.environ.setdefault("TS2EG_CI", "1")
 os.environ["PYTHONHASHSEED"] = "0"
 random.seed(0); np.random.seed(0)
 
-# CI synthetic stub: if no data yet, create tiny offline counts (and default K)
+# CI synthetic stub: if notebook has no data yet, create tiny offline counts + default K
 if os.getenv("TS2EG_CI","0") == "1":
     g = globals()
     if ("counts" not in g) and ("v_growth" not in g) and ("X" not in g):
@@ -123,14 +114,12 @@ def execute_one(path: Path, timeout: int) -> None:
     nb.cells.insert(0, pre)
     inject_recovery_cells(nb)
     inject_x_guards(nb)
-
     ep = ExecutePreprocessor(
         timeout=timeout,
         kernel_name=nb.metadata.get("kernelspec", {}).get("name", "python3"),
         allow_errors=False
     )
     ep.preprocess(nb, {"metadata": {"path": str(ROOT)}})
-
     out = OUT_DIR / (path.stem + ".executed.ipynb")
     nbf.write(nb, out)
     print(f"[ok] executed: {path} -> {out}")
@@ -139,23 +128,38 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="fast", choices=["fast","slow","skip"])
     ap.add_argument("--timeout", type=int, default=120)
+    ap.add_argument("--only", default="", help="Substring filter on notebook filename")
+    ap.add_argument("--list", action="store_true", help="List selected notebooks and exit")
     args = ap.parse_args()
 
     os.environ.setdefault("MPLBACKEND", "Agg")
     os.environ.setdefault("TS2EG_CI", "1")
 
-    notebooks = load_notebooks()
+    candidates = load_notebooks()
     selected = []
-    for p in notebooks:
+    for p in candidates:
         nb = nbf.read(p, as_version=4)
-        if wants(nb, args.tag):
+        if wants(nb, args.tag) and (args.only in p.name):
             selected.append(p)
+
+    if args.list:
+        for p in selected:
+            print(p.name)
+        sys.exit(0)
+
     if not selected:
-        print(f"No notebooks with ts2eg_ci == '{args.tag}'", file=sys.stderr); sys.exit(0)
+        print(f"No notebooks match tag='{args.tag}' and only='{args.only}'", file=sys.stderr)
+        sys.exit(0)
 
     t0 = time.time()
     for p in selected:
-        execute_one(p, timeout=args.timeout)
+        rel = p.relative_to(ROOT)
+        print(f">>> Running: {rel}", flush=True)
+        try:
+            execute_one(p, timeout=args.timeout)
+        except Exception:
+            print(f"[fail] {rel}", file=sys.stderr, flush=True)
+            raise
     print(f"Done {len(selected)} notebooks in {time.time()-t0:.1f}s")
 
 if __name__ == "__main__":
