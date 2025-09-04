@@ -37,3 +37,28 @@ jobs:
         env:
           MPLBACKEND: Agg
         run: python examples/demo_var_game.py --N 4 --T 120 --p 2 --k 3 --ridge 1e-3 --seed 0
+  notebooks:
+    name: Notebooks (fast)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package + notebook deps
+        run: |
+          python -m pip install -U pip
+          pip install -e .
+          pip install -r requirements-notebooks.txt
+      - name: Run fast notebooks (headless, no network)
+        env:
+          TS2EG_CI: "1"
+          MPLBACKEND: "Agg"
+        run: |
+          python scripts/run_notebooks.py --tag fast --timeout 120
+      - name: Upload executed notebooks (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: notebooks-executed
+          path: artifacts/notebooks/*.executed.ipynb
