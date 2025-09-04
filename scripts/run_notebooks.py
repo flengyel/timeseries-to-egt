@@ -5,13 +5,6 @@ Writes executed copies under artifacts/notebooks/*.executed.ipynb.
 
 Usage:
   python scripts/run_notebooks.py [--tag fast|slow|skip] [--timeout 120]
-
-Notes:
-- Injects a CI preamble cell (seeds, TS2EG_CI=1, network block).
-- Inserts recovery cells after any `%reset`-like use to restore imports/seeds.
-- Inserts guard cells before any code cell referencing `X` to define it from
-  `counts`/`v_growth` when absent.
-- Fails on any execution error (return code != 0).
 """
 from __future__ import annotations
 import argparse, os, sys, socket, time, platform, asyncio, re
@@ -40,13 +33,12 @@ def wants(nb, wanted_tag: str) -> bool:
 
 # Detect resets that clear namespace
 RESET_PATTERNS = (
-    r"^\s*%reset\b",                                # IPython magic
-    r"get_ipython\(\)\.magic\(\s*[\"']reset",       # explicit call
-    r"run_line_magic\(\s*[\"']reset",               # run_line_magic('reset', ...)
+    r"^\s*%reset\b",
+    r"get_ipython\(\)\.magic\(\s*[\"']reset",
+    r"run_line_magic\(\s*[\"']reset",
 )
 
 def inject_recovery_cells(nb) -> int:
-    """After any reset-like cell, insert a tiny recovery cell that restores imports, seeds, and the network block."""
     inserted = 0
     i = 0
     while i < len(nb.cells):
@@ -63,23 +55,18 @@ def inject_recovery_cells(nb) -> int:
                     "_socket.create_connection = _deny\n"
                 )
                 rec = nbf.v4.new_code_cell(rec_src, metadata={"tags": ["ci-recover-imports"]})
-                nb.cells.insert(i + 1, rec)
-                inserted += 1
-                i += 1
+                nb.cells.insert(i + 1, rec); inserted += 1; i += 1
         i += 1
     return inserted
 
 def inject_x_guards(nb) -> int:
-    """Before any cell that references a free name 'X', insert a guard cell that defines X from counts or v_growth if missing."""
     inserted = 0
     pat_use = re.compile(r'(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])')
     for i in range(len(nb.cells) - 1, -1, -1):
         c = nb.cells[i]
-        if c.get("cell_type") != "code":
-            continue
+        if c.get("cell_type") != "code": continue
         src = c.get("source", "") or ""
-        if not pat_use.search(src):
-            continue
+        if not pat_use.search(src): continue
         guard_src = (
             "import numpy as _np\n"
             "if 'X' not in globals():\n"
@@ -91,8 +78,7 @@ def inject_x_guards(nb) -> int:
             "        raise NameError('X is undefined (no counts/v_growth available)')\n"
         )
         guard = nbf.v4.new_code_cell(guard_src, metadata={"tags": ["ci-ensure-X"]})
-        nb.cells.insert(i, guard)
-        inserted += 1
+        nb.cells.insert(i, guard); inserted += 1
     return inserted
 
 PREAMBLE = r"""# CI preamble (injected)
@@ -107,7 +93,7 @@ if platform.system() == "Windows":
     except Exception:
         pass
 
-# Headless plotting and plt shim (some notebooks forget 'import matplotlib.pyplot as plt')
+# Headless plotting and plt shim
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -116,6 +102,16 @@ os.environ.setdefault("TS2EG_CI", "1")
 os.environ["PYTHONHASHSEED"] = "0"
 random.seed(0); np.random.seed(0)
 
+# CI synthetic stub: if no data yet, create tiny offline counts (and default K)
+if os.getenv("TS2EG_CI","0") == "1":
+    g = globals()
+    if ("counts" not in g) and ("v_growth" not in g) and ("X" not in g):
+        rng = np.random.default_rng(0)
+        N, T = 4, 80
+        counts = np.maximum(rng.lognormal(mean=0.0, sigma=0.4, size=(N, T)), 1e-8)
+    if "K" not in g:
+        K = 3
+
 # deny network calls
 def _deny(*a, **k): raise RuntimeError("network disabled in CI")
 socket.create_connection = _deny
@@ -123,12 +119,9 @@ socket.create_connection = _deny
 
 def execute_one(path: Path, timeout: int) -> None:
     nb = nbf.read(path, as_version=4)
-    # Inject preamble as the very first cell (non-destructive to repo)
     pre = nbf.v4.new_code_cell(PREAMBLE, metadata={"tags": ["ci-preamble"]})
     nb.cells.insert(0, pre)
-    # Insert recovery cells after any %reset / reset magic
     inject_recovery_cells(nb)
-    # Insert X-guards before any cell that references X
     inject_x_guards(nb)
 
     ep = ExecutePreprocessor(
@@ -148,7 +141,6 @@ def main():
     ap.add_argument("--timeout", type=int, default=120)
     args = ap.parse_args()
 
-    # CI-friendly environment
     os.environ.setdefault("MPLBACKEND", "Agg")
     os.environ.setdefault("TS2EG_CI", "1")
 
@@ -159,8 +151,7 @@ def main():
         if wants(nb, args.tag):
             selected.append(p)
     if not selected:
-        print(f"No notebooks with ts2eg_ci == '{args.tag}'", file=sys.stderr)
-        sys.exit(0)
+        print(f"No notebooks with ts2eg_ci == '{args.tag}'", file=sys.stderr); sys.exit(0)
 
     t0 = time.time()
     for p in selected:
