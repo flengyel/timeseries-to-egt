@@ -5,6 +5,7 @@ Fix notebooks by:
   2) Using ts2eg-only imports (from ts2eg.core).
   3) Ensuring X exists before the first nmf_on_X(...) call.
   4) Renaming keyword 'lambda_=' -> 'ridge='.
+  5) Ensuring S exists before estimate_A_from_series/find_ESS by inserting a guard.
 
 Idempotent and safe to re-run.
 """
@@ -20,6 +21,8 @@ NB_DIR = ROOT / "notebooks"
 IMPORT_MARKER = re.compile(r"^\s*#\s*---\s*Canonical imports", re.I | re.M)
 HAS_LEGACY    = re.compile(r"\bgamify_timeseries\b|egt_extensions\b", re.I | re.M)
 CALLS_NMF     = re.compile(r"\bnmf_on_X\s*\(", re.M)
+CALLS_EST     = re.compile(r"\bestimate_A_from_series\s*\(", re.M)
+CALLS_FIND    = re.compile(r"\bfind_ESS\s*\(", re.M)
 DEF_X         = re.compile(r"^\s*X\s*=", re.M)
 RE_LAMBDA_KW  = re.compile(r"(?<![A-Za-z0-9_])lambda_\s*=")
 
@@ -41,6 +44,17 @@ if 'X' not in globals():
         X = _np.asarray(counts, dtype=float)
     else:
         raise NameError("X is undefined; expected v_growth or counts earlier in the notebook.")
+"""
+
+S_GUARD = """# Ensure strategy basis S exists before estimation
+try:
+    _ = S  # noqa: F821
+except NameError:
+    try:
+        K = int(globals().get('K', 3))
+    except Exception:
+        K = 3
+    S, H = nmf_on_X(X, k=K, iters=50, seed=1, normalize='l2')
 """
 
 def notebooks():
@@ -75,6 +89,24 @@ def insert_x_guard(nb) -> bool:
     nb.cells.insert(idx, guard)
     return True
 
+def insert_s_guard(nb) -> bool:
+    """
+    Insert S_GUARD immediately before the first estimate_A_from_series or find_ESS call.
+    """
+    idx = None
+    for i, c in enumerate(nb.cells):
+        if c.get("cell_type") != "code":
+            continue
+        src = c.get("source","") or ""
+        if CALLS_EST.search(src) or CALLS_FIND.search(src):
+            idx = i
+            break
+    if idx is None:
+        return False
+    guard = nbf.v4.new_code_cell(S_GUARD, metadata={"tags": ["ci-ensure-S"]})
+    nb.cells.insert(idx, guard)
+    return True
+
 def rename_lambda_kw(nb) -> bool:
     """Rename keyword lambda_= -> ridge= in all code cells."""
     changed = False
@@ -94,13 +126,15 @@ def main():
         nb = nbf.read(p, as_version=4)
         ci = rewrite_imports(nb)
         cx = insert_x_guard(nb)
+        cs = insert_s_guard(nb)
         cr = rename_lambda_kw(nb)
-        if ci or cx or cr:
+        if ci or cx or cs or cr:
             nbf.write(nb, p)
             changed_any = True
             flags = []
             if ci: flags.append("imports")
             if cx: flags.append("X-guard")
+            if cs: flags.append("S-guard")
             if cr: flags.append("ridge")
             print(f"[patched] {p.name}: {', '.join(flags)}")
         else:
