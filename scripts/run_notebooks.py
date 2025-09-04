@@ -51,25 +51,36 @@ def inject_recovery_cells(nb) -> int:
     return inserted
 
 def inject_x_guards(nb) -> int:
-    inserted = 0
+    """
+    Insert an X-guard BEFORE any cell that references a free name `X`,
+    but NEVER before the injected preamble (tagged 'ci-preamble').
+    """
     pat_use = re.compile(r'(?<![A-Za-z0-9_])X(?![A-Za-z0-9_])')
-    for i in range(len(nb.cells) - 1, -1, -1):
-        c = nb.cells[i]
-        if c.get("cell_type") != "code": continue
+    to_insert = []
+    for idx, c in enumerate(nb.cells):
+        if c.get("cell_type") != "code":
+            continue
+        tags = set((c.get("metadata", {}) or {}).get("tags") or [])
+        if "ci-preamble" in tags:
+            continue  # don't insert before the preamble
         src = c.get("source", "") or ""
-        if not pat_use.search(src): continue
-        guard_src = (
-            "import numpy as _np\n"
-            "if 'X' not in globals():\n"
-            "    if 'counts' in globals():\n"
-            "        X = _np.asarray(counts, dtype=float)\n"
-            "    elif 'v_growth' in globals():\n"
-            "        X = _np.asarray(v_growth, dtype=float)\n"
-            "    else:\n"
-            "        raise NameError('X is undefined (no counts/v_growth available)')\n"
-        )
+        if pat_use.search(src):
+            ins_idx = max(1, idx)  # clamp to ≥ 1
+            to_insert.append(ins_idx)
+    inserted = 0
+    guard_src = (
+        "import numpy as _np\n"
+        "if 'X' not in globals():\n"
+        "    if 'counts' in globals():\n"
+        "        X = _np.asarray(counts, dtype=float)\n"
+        "    elif 'v_growth' in globals():\n"
+        "        X = _np.asarray(v_growth, dtype=float)\n"
+        "    else:\n"
+        "        raise NameError('X is undefined (no counts/v_growth available)')\n"
+    )
+    for ins_idx in sorted(set(to_insert), reverse=True):
         guard = nbf.v4.new_code_cell(guard_src, metadata={"tags": ["ci-ensure-X"]})
-        nb.cells.insert(i, guard); inserted += 1
+        nb.cells.insert(ins_idx, guard); inserted += 1
     return inserted
 
 PREAMBLE = r"""# CI preamble (injected)
