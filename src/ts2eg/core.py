@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, Iterable, List, Optional
 import numpy as np
 
+from .geometry import canonicalize_payoff_operator, centering_projector
+
 # ---------- Core transforms ----------
 def helmert_Q(N: int) -> np.ndarray:
     """Return the N×N Helmert (orthonormal) matrix Q; first column = 1/sqrt(N)."""
@@ -250,9 +252,12 @@ def estimate_A_from_series(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, 
       1) vZ = M_Z v (zero-sum across players).
       2) g(t) = S^T vZ(t)  (strategy-level signals).
       3) Infer memberships x(t) by projected gradient: min ||Sx - X(:,t)|| s.t. x in simplex.
-      4) Ridge regression for A from g ≈ A x, with row-centering enforced (replicator-invariant).
+      4) Ridge regression for A_raw from g ≈ A_raw x, followed by the
+         replicator-equivalent canonicalization A = M_Z^(k) @ A_raw.
 
-    Returns dict with A, memberships Xk, signals Gk/Gc, and R^2 fit.
+    Returns a dict containing the raw ridge estimate A_raw, its public canonical
+    representative A, memberships Xk, signals Gk/Gc, and R^2 fit.  The canonical
+    condition is 1.T @ A == 0; A @ 1 is not constrained.
     """
     if S.ndim != 2:
         raise ValueError("S must be 2D (N × k)")
@@ -284,17 +289,16 @@ def estimate_A_from_series(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, 
     for t in range(T):
         Xk[:, t] = _infer_membership_via_pg(S, X[:, t], iters=200)
 
-    # Center strategies (replicator invariance) and ridge regression for A
-    onek = np.ones((k, 1))
-    MZ_k = np.eye(k) - (onek @ onek.T) / k
+    # Center strategy-level signals, fit A_raw, and canonicalize on the left.
+    MZ_k = centering_projector(k)
     Gc = MZ_k @ Gk
     Cxx = Xk @ Xk.T
     Cgx = Gc @ Xk.T
     try:
-        A = Cgx @ np.linalg.solve(Cxx + ridge * np.eye(k), np.eye(k))
+        A_raw = Cgx @ np.linalg.solve(Cxx + ridge * np.eye(k), np.eye(k))
     except np.linalg.LinAlgError:
-        A = Cgx @ np.linalg.pinv(Cxx + ridge * np.eye(k))
-    A = MZ_k @ A @ MZ_k  # enforce row/column centering
+        A_raw = Cgx @ np.linalg.pinv(Cxx + ridge * np.eye(k))
+    A = canonicalize_payoff_operator(A_raw)
 
     # Fit diagnostics
     Ghat = A @ Xk
@@ -302,7 +306,16 @@ def estimate_A_from_series(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, 
     ss_res = float(np.sum(resid**2))
     ss_tot = float(np.sum(Gc**2)) + 1e-12
     R2 = 1.0 - ss_res / ss_tot
-    return {"A": A, "Xk": Xk, "Gk": Gk, "Gc": Gc, "R2": R2, "Cxx": Cxx, "Cgx": Cgx}
+    return {
+        "A": A,
+        "A_raw": A_raw,
+        "Xk": Xk,
+        "Gk": Gk,
+        "Gc": Gc,
+        "R2": R2,
+        "Cxx": Cxx,
+        "Cgx": Cgx,
+    }
 
 def find_ESS(A: np.ndarray, tol: float = 1e-8, max_support: int | None = None):
     """

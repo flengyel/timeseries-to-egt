@@ -23,7 +23,7 @@ def synthetic_series(N=5, T=360, seed=321):
     ])[:N]
     return (season + common + contrasts + 0.1*rng.standard_normal((N, T)) )
 
-def test_weighted_A_row_centering_and_R2():
+def test_weighted_A_left_canonicalization_and_R2():
     X = synthetic_series()
     N, T = X.shape
     # Build S via base NMF on [0,1]-scaled X
@@ -35,8 +35,9 @@ def test_weighted_A_row_centering_and_R2():
     w = np.array([0.5, 0.8, 1.0, 0.9, 0.7])[:N]
     est = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=K, ridge=1e-3, weights=w)
     A = est["A"]
-    # Row sums approximately zero (replicator invariance)
-    assert np.allclose(A.sum(axis=0), 0.0, atol=1e-8)
+    assert np.allclose(A, gm.canonicalize_payoff_operator(est["A_raw"]), atol=1e-12)
+    # The canonical representative has zero column sums: 1.T @ A == 0.
+    assert np.allclose(np.ones(K) @ A, 0.0, atol=1e-8)
     # Reasonable fit metric
     assert 0.0 <= est["R2"] <= 1.0
 

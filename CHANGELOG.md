@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+### Math/Algebra
+- Correct payoff-operator canonicalization to left-centering only:
+  `A = M_Z^(k) @ A_raw`. This preserves the replicator field under the payoff
+  equivalence `A ~ A + 1 c.T`; right-centering is no longer imposed.
+
+### API
+- Add `centering_projector`, `canonicalize_payoff_operator`, and
+  `replicator_field` geometry helpers.
+- Return the ridge estimate as `A_raw` from both operator estimators while
+  keeping public `A` as the canonical representative satisfying `1.T @ A == 0`.
+
 ## v0.1.1 — 2025-09-01
 ### API
 - Rename regularization arg **`lambda_` → `ridge`** in:

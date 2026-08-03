@@ -141,14 +141,14 @@ x(t)\;\in\;\argmin_{x\in\Delta_k}\;\|X_{\cdot,t}-Sx\|_2^2\quad (\text{optionally
 Define the strategy-level signal $g(t)=S^\top v_Z(t)$ and collect $X_k=[x(1)\,\cdots\,x(T)]\in\R^{k\times T}$, $G=[g(1)\,\cdots\,g(T)]\in\R^{k\times T}$.
 
 \section{Replicator-compatible Operator}
-Let $M_Z^{(k)}=I_k-\tfrac{1}{k}\one\one^\top$ be the strategy-space centering matrix. We fit $A\in\R^{k\times k}$ via ridge regression:
+Let $M_Z^{(k)}=I_k-\tfrac{1}{k}\one\one^\top$ be the strategy-space centering matrix. We first fit $A_{\mathrm{raw}}\in\R^{k\times k}$ via ridge regression:
 \begin{equation}
 \label{eq:ridge-A}
-\min_A \;\big\|M_Z^{(k)}G - A X_k\big\|_F^2 + \lambda\|A\|_F^2
+\min_{A_{\mathrm{raw}}} \;\big\|M_Z^{(k)}G - A_{\mathrm{raw}} X_k\big\|_F^2 + \lambda\|A_{\mathrm{raw}}\|_F^2
 \qquad\Longrightarrow\qquad
-A \;=\; \big(M_Z^{(k)}G\big)X_k^\top\;\big(X_k X_k^\top + \lambda I\big)^{-1}.
+A_{\mathrm{raw}} \;=\; \big(M_Z^{(k)}G\big)X_k^\top\;\big(X_k X_k^\top + \lambda I\big)^{-1}.
 \end{equation}
-Row-centering $A\one=0$ (and optionally $\one^\top A=0$) enforces invariance of replicator dynamics under constant payoff shifts.
+Replicator dynamics are invariant under $A\mapsto A+\one c^\top$. We therefore return the canonical representative $A=M_Z^{(k)}A_{\mathrm{raw}}$, which satisfies $\one^\top A=0$. Multiplication on the right by $M_Z^{(k)}$ is not an identification normalization: it imposes $A\one=0$ and changes the replicator vector field in general.
 
 \section{Replicator Dynamics, Jacobian, Nash, and ESS}
 The continuous-time replicator dynamics on $\Delta_k$ are
@@ -190,7 +190,7 @@ IAAFT alternates phase randomization in the Fourier domain (matching the origina
 \section{Edge Cases and Identifiability}
 \begin{itemize}[leftmargin=*]
 \item If $X_{\cdot,t}=c_t\,\one$ (pure common mode), then $v_Z\equiv 0$ and the EGT signal is null by design.
-\item Replicator dynamics are invariant under adding the same constant to all payoffs; centering $A$ enforces this.
+\item Replicator dynamics are invariant under $A\mapsto A+\one c^\top$; left canonicalization $A\mapsto M_Z^{(k)}A$ selects a representative of this equivalence class.
 \item Choice of $S$ matters; NMF/archetypes produce parts-based, interpretable strategies. PCA is acceptable but mixes signs; rectification may be used.
 \end{itemize}
 
@@ -210,7 +210,7 @@ Thus, while philosophically aligned with ``coordinate systems for games,'' ts2eg
 \item Compute $M_I$/$M_Z$ (or weighted) and optionally a (weighted) Helmert basis using \eqref{eq:helmert-q1}–\eqref{eq:helmert-qk}.
 \item Build per-time payoffs $v(t)$ via static profiles or information-sharing; take $v_Z(t)=M_Z v(t)$.
 \item Learn strategies $S$ and mixtures $x(t)\in\Delta_k$.
-\item Form $g(t)=S^\top v_Z(t)$ and fit $A$ by ridge: $A=(M_Z^{(k)}G)X_k^\top(X_kX_k^\top+\lambda I)^{-1}$; enforce $A\one=0$.
+\item Form $g(t)=S^\top v_Z(t)$ and fit $A_{\mathrm{raw}}$ by ridge: $A_{\mathrm{raw}}=(M_Z^{(k)}G)X_k^\top(X_kX_k^\top+\lambda I)^{-1}$; return $A=M_Z^{(k)}A_{\mathrm{raw}}$ so that $\one^\top A=0$.
 \item Enumerate supports to find mixed Nash equilibria; apply the tangent-space test for ESS.
 \item Generate IAAFT surrogates; re-estimate $A$; report ESS frequency.
 \end{enumerate}

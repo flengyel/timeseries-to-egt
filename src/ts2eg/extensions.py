@@ -19,6 +19,7 @@ import numpy as np
 
 # Import public pieces from the base toolkit
 from . import core as gm
+from .geometry import canonicalize_payoff_operator, centering_projector
 
 # -------- (1) Weighted projectors --------
 
@@ -164,7 +165,11 @@ def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray,
       1) vZ = M_Z v (weighted if weights provided).
       2) g(t) = S^T vZ(t).
       3) infer memberships x(t) by projecting X(:,t) onto cone(S) with simplex constraint.
-      4) ridge for A in g ≈ A x with row-centering.
+      4) ridge for A_raw in g ≈ A_raw x, followed by the canonicalization
+         A = M_Z^(k) @ A_raw.
+
+    The returned public A satisfies 1.T @ A == 0.  A @ 1 is not constrained;
+    right-centering would change the replicator vector field in general.
     """
     if S.ndim != 2:
         raise ValueError("S must be 2D (N x k)")
@@ -197,23 +202,31 @@ def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray,
     for t in range(T):
         Xk[:, t] = gm._infer_membership_via_pg(S, X[:, t], iters=200)
 
-    onek = np.ones((k, 1))
-    MZ_k = np.eye(k) - (onek @ onek.T) / k
+    MZ_k = centering_projector(k)
     Gc = MZ_k @ Gk
     Cxx = Xk @ Xk.T
     Cgx = Gc @ Xk.T
     try:
-        A = Cgx @ np.linalg.solve(Cxx + ridge * np.eye(k), np.eye(k))
+        A_raw = Cgx @ np.linalg.solve(Cxx + ridge * np.eye(k), np.eye(k))
     except np.linalg.LinAlgError:
-        A = Cgx @ np.linalg.pinv(Cxx + ridge * np.eye(k))
-    A = MZ_k @ A @ MZ_k
+        A_raw = Cgx @ np.linalg.pinv(Cxx + ridge * np.eye(k))
+    A = canonicalize_payoff_operator(A_raw)
 
     Ghat = A @ Xk
     resid = Gc - Ghat
     ss_res = float(np.sum(resid**2))
     ss_tot = float(np.sum(Gc**2)) + 1e-12
     R2 = 1.0 - ss_res / ss_tot
-    return {"A": A, "Xk": Xk, "Gk": Gk, "Gc": Gc, "R2": R2, "Cxx": Cxx, "Cgx": Cgx}
+    return {
+        "A": A,
+        "A_raw": A_raw,
+        "Xk": Xk,
+        "Gk": Gk,
+        "Gc": Gc,
+        "R2": R2,
+        "Cxx": Cxx,
+        "Cgx": Cgx,
+    }
 
 def iaaft(x: np.ndarray, n_iter: int = 100, rng: np.random.Generator | None = None) -> np.ndarray:
     """Iterative Amplitude Adjusted Fourier Transform surrogate for a 1D series."""
@@ -275,6 +288,5 @@ def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, 
         "R2_std": float(np.std(R2_list)),
         "num_surrogates": num_surrogates,
     }
-
 
 

@@ -68,10 +68,10 @@ Form $v(t)=(v_1,\dots,v_N)^\top$ and carry forward $v_Z(t)=M_Zv(t)$.
 * **Estimator.**
   $$
   C_{xx}=X_k X_k^\top,\quad C_{gx}=G_c X_k^\top,\quad
-  A = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\; \rho=\texttt{ridge},\quad
-  A\leftarrow M_Z^{(k)}\,A\,M_Z^{(k)}.
+  A_{\mathrm{raw}} = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\; \rho=\texttt{ridge},\quad
+  A=M_Z^{(k)}A_{\mathrm{raw}}.
   $$
-  The estimator uses `np.linalg.solve` with `pinv` fallback and **enforces $A\mathbf{1}=\mathbf{0}$ and $\mathbf{1}^\top A=\mathbf{0}$** via the centering step.
+  The estimator uses `np.linalg.solve` with `pinv` fallback. Payoff operators are equivalent under $A\sim A+\mathbf{1}c^\top$, so the public canonical operator satisfies $\mathbf{1}^\top A=\mathbf{0}$. It does not impose $A\mathbf{1}=\mathbf{0}$; right-centering changes the replicator field in general.
 * **Dynamics/ESS.** Replicator $\dot{x}_i=x_i\big((Ax)_i-x^\top A x\big)$. The function `find_ESS` enumerates supports, checks Nash feasibility, and tests **local stability via the Jacobian on the tangent space**.
 
 ## Interpreting the results
@@ -205,7 +205,7 @@ Learn $S\in\mathbb R^{N\times k}$ (NMF/archetypes recommended). Infer $x(t)\in\D
 $g(t)=S^\top v_Z(t)$ where $v_Z(t)=M_Z v(t)$.
 
 **4) Replicator‑compatible operator.**  
-Center in strategy space $M_Z^{(k)}=I-\tfrac{1}{k}\mathbf1\mathbf1^\top$. Fit $A$ via ridge so $M_Z^{(k)} g \approx A x$; row/column centering for invariance.
+Center in strategy space $M_Z^{(k)}=I-\tfrac{1}{k}\mathbf1\mathbf1^\top$. Fit $A_{\mathrm{raw}}$ via ridge so $M_Z^{(k)} g \approx A_{\mathrm{raw}} x$, then use the left-canonical representative $A=M_Z^{(k)}A_{\mathrm{raw}}$.
 
 **5) Equilibria and ESS.**  
 Enumerate supports; solve $A_{JJ}x_J=\alpha \mathbf1$ with $\mathbf1^\top x_J=1$; check off‑support; test stability via the replicator Jacobian on the tangent space.
@@ -336,14 +336,15 @@ $$M_I^{(n)}(w)=\mathbf{1}_n \pi^\top,\qquad M_Z^{(n)}(w)=I_n-\mathbf{1}_n \pi^\t
 * Code: `Q = ts2eg.helmert_Q(N)`; invariants: `Q.T @ Q == I`, `Q[:,0] == 1/sqrt(N)`.
 
 **Centering a payoff operator**  
-When payoffs are defined up to additive constants in strategies, enforce  
-$$A \leftarrow M_Z^{(k)}\,A\,M_Z^{(k)}$$
-to remove row/column offsets in strategy space. (Code guarantees `A = MZ_k @ A @ MZ_k`.)
+Replicator payoffs are equivalent under $A\sim A+\mathbf1c^\top$. The canonical representative is
 
-**Ridge-regularized fit for $A$**  
+$$A_{\mathrm{canonical}}=M_Z^{(k)}A_{\mathrm{raw}},$$
+which guarantees $\mathbf1^\top A_{\mathrm{canonical}}=0$. Right-centering by multiplying with $M_Z^{(k)}$ on the right is not an identification normalization and generally changes the replicator vector field.
+
+**Ridge-regularized fit for $A_{\mathrm{raw}}$**
 Given $C_{xx}=X_k X_k^\top$ and $C_{gx}=G_c X_k^\top$ (centered signals $G_c$),  
-$$A = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\qquad \rho=\texttt{ridge}\ge 0,$$
-implemented with `np.linalg.solve`, fallback to `np.linalg.pinv` on singularities.
+$$A_{\mathrm{raw}} = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\qquad \rho=\texttt{ridge}\ge 0,$$
+implemented with `np.linalg.solve`, fallback to `np.linalg.pinv` on singularities, then left-canonicalized as described above.
 
 **ESS / Nash (sketch)**  
 `ts2eg.find_ESS(A)` enumerates mixed-support candidates, checks Nash and evolutionary stability (replicator Jacobian on supports); returns `is_nash`, `is_ess`.
@@ -351,7 +352,7 @@ implemented with `np.linalg.solve`, fallback to `np.linalg.pinv` on singularitie
 **API touchpoints**  
 
 * `helmert_Q(N)`, `projectors(N)` → $Q$, $M_I^{(N)}$, $M_Z^{(N)}$  
-* `estimate_A_from_series(S, X, v, k, ridge=...)` → $A$ (+ diagnostics)  
+* `estimate_A_from_series(S, X, v, k, ridge=...)` → canonical $A$, `A_raw` (+ diagnostics)
 * `extensions.estimate_A_from_series_weighted(..., ridge=..., weights=...)` uses $M_I^{(n)}(w)$, $M_Z^{(n)}(w)$ for weighted centering  
 * `find_ESS(A)` → ESS/Nash summary  
 

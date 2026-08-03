@@ -12,6 +12,9 @@ from .core import (
     helmert_Q, projectors, static_game_from_series, var_information_sharing_game,
     estimate_A_from_series, find_ESS, nmf_on_X,
 )
+from .geometry import (
+    canonicalize_payoff_operator, centering_projector, replicator_field,
+)
 
 # Extensions (optional add-ons)
 try:
@@ -26,6 +29,7 @@ __all__ = [
     "__version__",
     "helmert_Q", "projectors", "static_game_from_series", "var_information_sharing_game",
     "estimate_A_from_series", "find_ESS", "nmf_on_X",
+    "centering_projector", "canonicalize_payoff_operator", "replicator_field",
     "weighted_projectors", "var_information_sharing_game_seasonal",
     "estimate_A_from_series_weighted", "iaaft", "iaaft_matrix", "surrogate_ess_frequency",
 ]
