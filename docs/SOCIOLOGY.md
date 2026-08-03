@@ -2,6 +2,9 @@
 
 This note explains how to apply the `gamify-timeseries` pipeline to **coalitions, collective action, online governance, diffusion, and organizational role allocation**. It emphasizes payoff definitions that are recognizable to sociologists and political scientists.
 
+> Nash, ESS-certificate, and local-stability outputs are descriptive properties
+> of the fitted operator. They are not calibrated tests of the social data.
+
 ---
 
 ## Core mapping
@@ -38,7 +41,7 @@ This note explains how to apply the `gamify-timeseries` pipeline to **coalitions
 2. **Choose `v`**: `growth_payoffs` for counts or `info_gain_payoffs` for outcome‑driven analysis.  
 3. **Learn `S`** by NMF (3–6 archetypes typical). Normalize columns.  
 4. **Estimate** `A` with `estimate_A_from_series(S, X, v, k, ridge)`.  
-5. **Analyze**: fit quality \(R^2\); symmetric vs. skew parts of \(A\); **ESS** with `find_ESS(A)`; rolling‑window stability.  
+5. **Analyze**: fit quality \(R^2\); symmetric vs. skew parts of \(A\); descriptive `ess_status` records from `find_ESS(A)`; separately reported rolling‑window dynamics.
 6. **Validate**:  
    - **Nulls**: circular row shifts; block bootstrap; permute target \(J\).  
    - **Interventions**: elections, policy changes, major protests; check whether the vector field rotates as expected.
@@ -60,7 +63,7 @@ This note explains how to apply the `gamify-timeseries` pipeline to **coalitions
 - \(A = A_s + A_a\):  
   - \(A_s\) (symmetric) acts like a potential — aligns with a scalar objective.  
   - \(A_a\) (skew) encodes **cycles** — arms‑race or rotation among archetypes.  
-- **ESS** = evolutionarily stable strategy (stable archetype mix). Its presence/absence and basin size are substantive findings.
+- **ESS certificate** = a sufficient payoff condition for a candidate of the fitted operator. Its status is descriptive; basin size and local dynamic stability require separate diagnostics.
 
 ---
 
@@ -68,7 +71,7 @@ This note explains how to apply the `gamify-timeseries` pipeline to **coalitions
 
 - Use aggregated, de‑identified data when possible. Avoid sensitive attributes as “players” unless approved and necessary.  
 - Beware endogeneity: outcomes and memberships co‑determine each other; prefer lagged targets, natural experiments, or instrumented designs.  
-- Report negative results (no ESS; weak fit) — they are informative about volatility/nonstationarity.
+- Report rejected or undetermined ESS certificates and weak fits without treating them as hypothesis-test outcomes.
 
 ---
 
@@ -97,5 +100,5 @@ X = counts / (counts.sum(axis=0, keepdims=True) + 1e-12)
 # Learn S (NMF with column normalization), then:
 est = estimate_A_from_series(S, X, v, k=S.shape[1], ridge=1e-2)
 A = est["A"]
-ess = [r for r in find_ESS(A) if r["is_ess"]]
+certified = [r for r in find_ESS(A) if r["ess_status"] == "certified"]
 ```

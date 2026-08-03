@@ -31,9 +31,9 @@ This note collects the mathematics underlying the \emph{timeseries-to-egt} pipel
     \item decomposes $v(t)$ into \emph{common-interest} and \emph{zero-sum} parts via orthogonal projections,
     \item maps player space to a $k$-strategy space using a data-driven dictionary $S\in\R^{N\times k}$ and mixtures $x(t)\in\Delta_k$,
     \item estimates a strategy-level operator $A\in\R^{k\times k}$ compatible with replicator dynamics, and
-    \item computes (and tests stability of) mixed equilibria, using IAAFT surrogates to assess significance.
+    \item reports descriptive Nash, ESS-certificate, and local-stability diagnostics for the fitted operator.
 \end{enumerate}
-Finding an ESS is interpreted as evidence for \emph{strategic interaction} in the data.
+Nash and ESS results are descriptive properties of a fitted operator. The former surrogate ESS-frequency procedure is uncalibrated and deprecated; it must not be used as a p-value or hypothesis test. This milestone introduces no replacement inferential test.
 
 \section{Notation}
 \begin{itemize}[leftmargin=*]
@@ -163,14 +163,25 @@ A mixed rest point $x^\star$ with support $J=\{i:x^\star_i>0\}$ satisfies
 \begin{equation}
 A_{JJ} x^\star_J = \alpha\,\one,\quad \one^\top x^\star_J=1,\qquad (Ax^\star)_\ell \le \alpha\ \ \forall \ell\notin J,
 \end{equation}
-i.e., $x^\star$ is a (symmetric) mixed Nash equilibrium. For (local) evolutionary stability one may use the following sufficient test.
-\begin{proposition}[Tangent-space test]
-If $x^\star$ is a mixed Nash equilibrium with support $J$ and the quadratic form
+i.e., $x^\star$ is a (symmetric) mixed Nash equilibrium. Let
 \(
-y^\top \frac{A_{JJ}+A_{JJ}^\top}{2}\, y
+A_s=(A_{JJ}+A_{JJ}^\top)/2
 \)
-is negative definite on $\{y\in\R^{|J|}:\ \one^\top y=0\}$, then $x^\star$ is a (locally) evolutionary stable strategy for the replicator dynamics.
+and let $Q$ be an orthonormal basis for
+\(
+T_J=\{y\in\R^{|J|}:\one^\top y=0\}.
+\)
+For a pure support, $Q$ has shape $1\times0$ and the within-support condition is vacuous.
+\begin{proposition}[ESS certificate used by \texttt{find\_ESS}]
+If every unused pure strategy is strictly worse against $x^\star$ and every eigenvalue of $Q^\top A_sQ$ is strictly negative, then the routine reports \texttt{ess\_status=``certified''}.
 \end{proposition}
+If the tangent condition fails, the status is \texttt{rejected}. If the tangent condition passes but an unused pure strategy ties, the simple certificate is incomplete and the status is \texttt{undetermined}. The compatibility field \texttt{is\_ess} is true exactly for certified records; a false value is not a complete non-ESS decision in the undetermined case.
+
+Local dynamic stability is reported separately. The Jacobian is restricted with the same orthonormal tangent basis, while every unused strategy contributes the transverse invasion eigenvalue
+\begin{equation}
+\lambda_\ell=(Ax^\star)_\ell-x^{\star\top}Ax^\star,\qquad \ell\notin J.
+\end{equation}
+Strictly negative real parts certify local asymptotic stability and a positive real part certifies instability. Zero-real-part modes are non-hyperbolic, so the linear diagnostic is reported as \texttt{undetermined}. No Jacobian flag is used as an ESS or significance test.
 
 \section{Seasonal VAR Details}
 Let $S(t)$ collect seasonal regressors such as $\{\sin(2\pi m t/P),\cos(2\pi m t/P)\}_{m\in \mathcal{M}}$. For player $i$ the full regression is
@@ -179,13 +190,13 @@ X_{i,t} \;=\; \sum_{j=1}^N \sum_{\ell=1}^p \beta_{i,j,\ell} X_{j,t-\ell} \;+\; \
 \end{equation}
 with ridge penalty on $\beta,\gamma$. The information-sharing payoff $v_i$ is computed from the MSE reduction relative to the self-only regression. Center $v$ across players with $M_Z$ (or $M_Z^{(w)}$). See \cite{lutkepohl} for VAR practice.
 
-\section{IAAFT Surrogates and Significance}
-To assess whether an observed ESS arises from cross-player coupling rather than marginal autocorrelation, we generate IAAFT surrogates for each player series:
+\section{Legacy IAAFT Surrogate Diagnostic}
+The compatibility routine \texttt{surrogate\_ess\_frequency} generates row-wise IAAFT surrogates and records how often fitted surrogate operators contain an ESS-certified record:
 \begin{itemize}[leftmargin=*]
 \item Each surrogate preserves the \emph{empirical amplitude distribution} and the \emph{power spectrum} of the original player series but destroys cross-player dependence.
-\item For each surrogate dataset, recompute payoffs, re-estimate $A$ via \eqref{eq:ridge-A}, and tally whether an ESS is found. The surrogate ESS rate provides a null benchmark.
+\item For each surrogate dataset, recompute payoffs, re-estimate $A$ via \eqref{eq:ridge-A}, and tally the descriptive ESS-certificate status.
 \end{itemize}
-IAAFT alternates phase randomization in the Fourier domain (matching the original magnitudes) with rank-order remapping to the original amplitudes until convergence \cite{schreiber-schmitz}.
+This frequency is uncalibrated, deprecated, and is not a p-value, hypothesis test, or significance measure. No replacement inferential test is introduced in this milestone. IAAFT alternates phase randomization in the Fourier domain (matching the original magnitudes) with rank-order remapping to the original amplitudes until convergence \cite{schreiber-schmitz}.
 
 \section{Edge Cases and Identifiability}
 \begin{itemize}[leftmargin=*]
@@ -201,7 +212,7 @@ Jessie and Saari advocate analyzing \emph{classes} of games by decomposing each 
 \item derive per-time payoff vectors from multivariate signals (static or predictive-gain definitions);
 \item isolate common-interest vs.\ zero-sum directions \emph{in player space} via ANOVA/Helmert at each time;
 \item map payoffs to a learned strategy dictionary $S$ to obtain strategy-level signals; and
-\item estimate a replicator-compatible operator $A$ by ridge, enabling ESS analysis with surrogate significance (IAAFT).
+\item estimate a replicator-compatible operator $A$ by ridge and report descriptive equilibrium diagnostics.
 \end{enumerate}
 Thus, while philosophically aligned with ``coordinate systems for games,'' ts2eg couples signal processing (VAR with seasonal regressors; IAAFT) and evolutionary dynamics through an explicit change of variables in player space.
 
@@ -211,8 +222,8 @@ Thus, while philosophically aligned with ``coordinate systems for games,'' ts2eg
 \item Build per-time payoffs $v(t)$ via static profiles or information-sharing; take $v_Z(t)=M_Z v(t)$.
 \item Learn strategies $S$ and mixtures $x(t)\in\Delta_k$.
 \item Form $g(t)=S^\top v_Z(t)$ and fit $A_{\mathrm{raw}}$ by ridge: $A_{\mathrm{raw}}=(M_Z^{(k)}G)X_k^\top(X_kX_k^\top+\lambda I)^{-1}$; return $A=M_Z^{(k)}A_{\mathrm{raw}}$ so that $\one^\top A=0$.
-\item Enumerate supports to find mixed Nash equilibria; apply the tangent-space test for ESS.
-\item Generate IAAFT surrogates; re-estimate $A$; report ESS frequency.
+\item Enumerate supports to find mixed Nash equilibria; report the symmetric-part ESS certificate and local dynamic eigenvalues separately.
+\item If required for compatibility, report the deprecated IAAFT ESS frequency as an uncalibrated descriptive diagnostic only.
 \end{enumerate}
 
 \section{Symbols (quick reference)}

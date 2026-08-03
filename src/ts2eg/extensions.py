@@ -7,7 +7,7 @@ Extensions for the time-series → game toolkit.
 Adds:
   1) Weighted projectors (W-inner-product mean & centering)
   2) Seasonal-VAR support for Option B (information-sharing game)
-  3) IAAFT surrogate generator + harness that re-estimates A and tallies ESS frequency
+  3) IAAFT surrogate generator + deprecated legacy descriptive ESS-frequency harness
 
 This file does NOT modify the base module. It imports and extends it.
 """
@@ -15,6 +15,7 @@ This file does NOT modify the base module. It imports and extends it.
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Tuple, Iterable, List, Optional
+import warnings
 import numpy as np
 
 # Import public pieces from the base toolkit
@@ -259,11 +260,23 @@ def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, 
                             tol: float = 1e-8, max_support: int | None = None,
                             weights: np.ndarray | None = None, seed: int = 0):
     """
-    Generate IAAFT surrogates (row-wise, breaking cross-player dependence), re-estimate A (weighted),
-    and tally ESS frequency using gm.find_ESS.
+    Return a deprecated legacy descriptive frequency across IAAFT surrogates.
+
+    This routine is uncalibrated and must not be used as a p-value, hypothesis
+    test, or evidence of strategic interaction.  It is retained temporarily for
+    compatibility and only tallies how often legacy surrogate fits contain an
+    ESS-certified record from :func:`ts2eg.find_ESS`.  No replacement
+    inferential procedure is introduced here.
+
     If v is None, use v = X.
     Returns dict with 'ess_rate', 'nash_rate', 'R2_mean', 'R2_std'.
     """
+    warnings.warn(
+        "surrogate_ess_frequency is deprecated and uncalibrated; its output is "
+        "a legacy descriptive diagnostic only, not a p-value or hypothesis test",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if v is None:
         v = X
     rng = np.random.default_rng(seed)
@@ -278,7 +291,7 @@ def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, 
         R2_list.append(est["R2"])
         res = gm.find_ESS(A, tol=tol, max_support=max_support)
         nash_any = any(r["is_nash"] for r in res)
-        ess_any = any(r["is_ess"] for r in res)
+        ess_any = any(r["ess_status"] == "certified" for r in res)
         nash_count += int(nash_any)
         ess_count += int(ess_any)
     return {
@@ -288,5 +301,3 @@ def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, 
         "R2_std": float(np.std(R2_list)),
         "num_surrogates": num_surrogates,
     }
-
-

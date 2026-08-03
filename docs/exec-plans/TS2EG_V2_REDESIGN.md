@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed. Execute one milestone per pull request. Do not skip validation gates.
+Milestone 1 completed at commit `77568de` (`fix payoff operator canonicalization`).
+Milestone 2 is active. Execute one milestone per pull request and do not skip
+validation gates.
 
 ## Milestone 1: lock the geometry
 

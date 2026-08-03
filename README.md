@@ -5,21 +5,12 @@
 <!-- ts2eg-intro-exact-start -->
 ## Introduction
 
-`ts2eg` is an **inverse evolutionary game theory** pipeline that tests a multivariate time series $X\in\mathbb{R}^{N\times T}$ for **competitive (zero-sum) strategic interaction**.
+`ts2eg` maps a multivariate time series $X\in\mathbb{R}^{N\times T}$ to explicitly specified payoff fields, fitted evolutionary-game operators, and descriptive equilibrium diagnostics.
 
-* The test asks: after removing individual dynamics and **common-interest signal**, **is there evidence that agents interact through relative payoffs** consistent with replicator dynamics?
-* The pipeline **projects away the common-interest component** ($M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top$) and **retains only the zero-sum signal** ($M_Z=I_N-M_I$). A purely cooperative process (signal in the $M_I$ direction) is filtered out and yields a null result.
+* The pipeline separates the **common-interest component** ($M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top$) from the relative-payoff component ($M_Z=I_N-M_I$).
+* The current operator estimator is a payoff-field regression. Its Nash, ESS, and local-stability outputs describe the fitted operator; they do not establish cross-player coupling or causal interaction.
 
-**Hypotheses and test statistic.**
-
-* $H_0$: any apparent equilibrium arises from per-series autocorrelation only (no cross-player coupling).
-* $H_1$: there exists a centered payoff operator $A$ in strategy space that produces an ESS under replicator dynamics.
-
-Test statistic: the **ESS indicator** on the observed data (1 if an ESS is found, else 0). The null ESS rate is estimated via IAAFT surrogates; report the empirical $p$-value
-$$
-p=\frac{1+\#\{\text{surrogates with ESS}\}}{1+S},
-$$
-where $S$ is the number of surrogates. (Low $p$ with an observed ESS rejects $H_0$.)
+> **Inferential status:** Nash and ESS results are descriptive properties of a fitted operator. The former surrogate ESS-frequency procedure is uncalibrated, deprecated, and must not be used as a p-value or hypothesis test. This milestone introduces no replacement inferential test.
 
 See mathematical background: `docs/ts2eg_math_background.tex`.
 
@@ -31,8 +22,7 @@ See mathematical background: `docs/ts2eg_math_background.tex`.
 | 2. Payoff induction     | $X$             | VAR information-sharing (ridge) | Per-time payoffs $v(t)$                                  |
 | 3. Strategy learning    | $X$             | Dictionary learning (NMF)       | $S\in\mathbb{R}^{N\times k}$, mixtures $x(t)\in\Delta_k$ |
 | 4. Game estimation      | $v_Z(t),\,x(t)$ | Centered ridge regression       | $A\in\mathbb{R}^{k\times k}$                          |
-| 5. Equilibrium analysis | $A$             | Replicator Jacobian test        | ESS presence/absence                                     |
-| 6. Significance         | $X$             | IAAFT surrogates                | Empirical $p$-value                                      |
+| 5. Equilibrium analysis | $A$             | Nash checks and ESS certificate | Descriptive statuses and stability eigenvalues           |
 
 **Stage 1 (definition).** Define the mean and centering projectors in player space
 
@@ -50,7 +40,7 @@ and carry $v_Z(t)$ forward.
 
 **Weighted variant:** for $w\ge 0$ with $\sum_i w_i>0$, let $\pi=w/\sum_i w_i$ and use $M_I^{(w)}=\mathbf{1}\pi^\top,\; M_Z^{(w)}=I_N-\mathbf{1}\pi^\top$.
 
-**Note:** if $X_{\cdot,t}=c_t\,\mathbf{1}$ for all $t$, then $v_Z\equiv 0$ and the test (correctly) returns a null result.
+**Note:** if $X_{\cdot,t}=c_t\,\mathbf{1}$ for all $t$, then $v_Z\equiv 0$ by construction.
 
 **Stage 2 (definition).** For each player $i$, fit (i) a self-only AR($p$) model and (ii) a full VAR($p$) using all players (ridge-regularized). The information-sharing payoff is the **MSE reduction**  
 $\;\;v_i=\mathrm{MSE}_{\text{self}}-\mathrm{MSE}_{\text{full}}.$  
@@ -72,17 +62,16 @@ Form $v(t)=(v_1,\dots,v_N)^\top$ and carry forward $v_Z(t)=M_Zv(t)$.
   A=M_Z^{(k)}A_{\mathrm{raw}}.
   $$
   The estimator uses `np.linalg.solve` with `pinv` fallback. Payoff operators are equivalent under $A\sim A+\mathbf{1}c^\top$, so the public canonical operator satisfies $\mathbf{1}^\top A=\mathbf{0}$. It does not impose $A\mathbf{1}=\mathbf{0}$; right-centering changes the replicator field in general.
-* **Dynamics/ESS.** Replicator $\dot{x}_i=x_i\big((Ax)_i-x^\top A x\big)$. The function `find_ESS` enumerates supports, checks Nash feasibility, and tests **local stability via the Jacobian on the tangent space**.
+* **Descriptive equilibria.** Replicator $\dot{x}_i=x_i\big((Ax)_i-x^\top A x\big)$. The function `find_ESS` checks Nash feasibility, reports an ESS certificate from the symmetric payoff part on an orthonormal tangent basis, and reports Jacobian-based local stability separately.
 
 ## Interpreting the results
 
-* **Positive (reject $H_0$):** an ESS is found on the data and the empirical $p$-value from surrogates is small $\Rightarrow$ evidence for **competitive, zero-sum interaction** in $X$ beyond per-series autocorrelation.
-* **Null:** either no strategic coupling, or only cooperative/common-interest signal (deliberately excluded by $M_Z$), or competitive signal too weak to detect.
+`ess_status="certified"` means the fitted operator passed the strict off-support and negative-tangent sufficient conditions implemented here. `ess_status="undetermined"` records an off-support tie for which the simple certificate is incomplete. Neither status is an inferential result about the data-generating process. Local dynamic stability is a separate linearization diagnostic and may also be undetermined in non-hyperbolic cases.
 
 ## Numerical/robustness notes
 
 * Invariance to level shifts via $M_Z$.
-* Centered operator $A$ ($A\mathbf{1}=0$ and $\mathbf{1}^\top A=0$) by construction.
+* Canonical operator $A$ satisfies $\mathbf{1}^\top A=0$; $A\mathbf{1}=0$ is not imposed.
 * Ridge regularization with pseudo-inverse fallback for near-singular $C_{xx}$.
 * Weighted variants guard against $\sum w=0$.
 * Reproducible examples (`--seed`) seed NumPy (and Python RNG where used); NumPy-2-compatible.
@@ -162,13 +151,9 @@ S, H = gm.nmf_on_X(X0, k=3, iters=200, seed=2, normalize="l2")
 X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
 A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=3, ridge=1e-3, weights=w)["A"]
 
-ess = [e for e in gm.find_ESS(A, tol=1e-8, max_support=3) if e["is_ess"]]
-
-# Optional: surrogate significance via IAAFT
-sig = ext.surrogate_ess_frequency(S, X_std, X_std, k=3, ridge=1e-3,
-                                  num_surrogates=50, iaaft_iters=100, weights=w, seed=0)
-print("ESS supports:", [e["support"] for e in ess])
-print("Surrogate ESS rate:", sig["ess_rate"])
+equilibria = gm.find_ESS(A, tol=1e-8, max_support=3)
+certified = [e for e in equilibria if e["ess_status"] == "certified"]
+print("Descriptive ESS-certified supports:", [e["support"] for e in certified])
 ```
 
 ---
@@ -183,7 +168,7 @@ Many “inverse EGT” papers start from observed **strategy frequencies**. Real
 2. Induce payoffs from time series via two choices: static discretized profiles or **information‑sharing** gains (VAR‑like OLS).
 3. Learn a compact **strategy basis** and infer time‑varying **mixtures** $x(t)\in\Delta_k$.
 4. Fit a **strategy‑level payoff operator** $A$ so replicator dynamics apply.
-5. Search for **ESS** and quantify significance with **IAAFT surrogates**.
+5. Report descriptive Nash, ESS-certificate, and local-stability diagnostics for the fitted operator.
 (Original phrasing restored and expanded.)
 
 ---
@@ -208,7 +193,7 @@ $g(t)=S^\top v_Z(t)$ where $v_Z(t)=M_Z v(t)$.
 Center in strategy space $M_Z^{(k)}=I-\tfrac{1}{k}\mathbf1\mathbf1^\top$. Fit $A_{\mathrm{raw}}$ via ridge so $M_Z^{(k)} g \approx A_{\mathrm{raw}} x$, then use the left-canonical representative $A=M_Z^{(k)}A_{\mathrm{raw}}$.
 
 **5) Equilibria and ESS.**  
-Enumerate supports; solve $A_{JJ}x_J=\alpha \mathbf1$ with $\mathbf1^\top x_J=1$; check off‑support; test stability via the replicator Jacobian on the tangent space.
+Enumerate supports; solve $A_{JJ}x_J=\alpha \mathbf1$ with $\mathbf1^\top x_J=1$; check Nash inequalities; certify ESS only when unused strategies are strictly worse and the symmetric payoff part is negative definite on an orthonormal support tangent. Report Jacobian and transverse invasion eigenvalues separately.
 
 ---
 
@@ -233,22 +218,25 @@ estimate_A_from_series(S, X, v, k, ridge=0.0) -> {..., "A": A}
 estimate_A_from_series_weighted(..., weights=None) -> {..., "A": A}
 
 # Equilibria
-find_ESS(A, tol=1e-8, max_support=None) -> list[dict]
+find_ESS(A, tol=1e-8, max_support=None) -> [{"is_nash", "ess_status",
+    "is_ess", "stability_status", "is_locally_asymptotically_stable", ...}]
 
 # Surrogates
 iaaft(x, n_iter=100, rng=None, seed=None) -> x_sur
 iaaft_matrix(X, n_iter=100, seed=None) -> X_sur
-surrogate_ess_frequency(...) -> {"ess_rate": float, ...}
+surrogate_ess_frequency(...) -> {"ess_rate": float, ...}  # deprecated, descriptive only
 ```
 
 ---
 
-## Diagnostics & significance
+## Descriptive diagnostics
 
 * Held‑out $R^2$ of $M_Z^{(k)}g \approx A x$  
 * Energy split $A_s=(A+A^\top)/2$ vs $A_a=(A-A^\top)/2$  
-* IAAFT surrogate ESS rate vs observed  
-* Rolling windows of $A$ and ESS (nonstationarity)  
+* ESS certificate status and its symmetric-part tangent eigenvalues
+* Replicator-Jacobian tangent eigenvalues and transverse invasion eigenvalues
+* Legacy IAAFT surrogate ESS frequency (deprecated and uncalibrated; never a p-value)
+* Rolling windows of $A$ and descriptive equilibrium diagnostics
 * Edge case: if $X_t=c_t\mathbf1$, then $v_Z\equiv 0$ → no EGT signal (by design)
 
 ---
@@ -347,7 +335,7 @@ $$A_{\mathrm{raw}} = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\qquad \rho=\texttt{ridge}\g
 implemented with `np.linalg.solve`, fallback to `np.linalg.pinv` on singularities, then left-canonicalized as described above.
 
 **ESS / Nash (sketch)**  
-`ts2eg.find_ESS(A)` enumerates mixed-support candidates, checks Nash and evolutionary stability (replicator Jacobian on supports); returns `is_nash`, `is_ess`.
+`ts2eg.find_ESS(A)` enumerates mixed-support candidates and returns `is_nash`, `ess_status`, and separate local-stability diagnostics. `is_ess` remains a compatibility alias for `ess_status == "certified"`; `False` is inconclusive when `ess_status == "undetermined"`.
 
 **API touchpoints**  
 

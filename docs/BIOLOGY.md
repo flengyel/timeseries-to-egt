@@ -2,6 +2,9 @@
 
 This document summarizes **how to use the pipeline in biology**, with payoff definitions that are standard to ecologists, microbiologists, and cancer biologists.
 
+> Nash, ESS-certificate, and local-stability outputs are descriptive properties
+> of the fitted operator. They are not calibrated tests of the biological data.
+
 ---
 
 ## Players, signals, strategies
@@ -62,7 +65,7 @@ If a scalar endpoint exists (e.g., total biomass at horizon `H`, metabolite conc
 
 4. **Fit & analyze**\n
    - `est = estimate_A_from_series(S, X, v, k, ridge)`.\n
-   - Examine `R²` (held-out if possible), `||A_s||` vs `||A_a||`, and **ESS** via `find_ESS(A)`.\n
+   - Examine `R²` (held-out if possible), `||A_s||` vs `||A_a||`, and descriptive `ess_status` records via `find_ESS(A)`.\n
 
 5. **Validate**\n
    - **Nulls:** circular shifts by row; AAFT/phase-scramble; label permutations.\n
@@ -85,7 +88,7 @@ If a scalar endpoint exists (e.g., total biomass at horizon `H`, metabolite conc
 - Data source, preprocessing, and whether counts or relative abundances were used.\n
 - Strategy basis `S` (heatmap with labels), number of strategies `k`.\n
 - Payoff construction (`growth` vs `info_gain`) and horizon.\n
-- Fit quality (`R²`), symmetry ratio `||A_a||/||A||`, ESS supports and basin evidence.\n
+- Fit quality (`R²`), symmetry ratio `||A_a||/||A||`, descriptive ESS-certificate statuses, and separately justified basin diagnostics.\n
 - Null controls and robustness (rolling windows, seed sensitivity).\n
 
 ---
@@ -100,7 +103,7 @@ X = counts / (counts.sum(axis=0, keepdims=True) + 1e-12)   # shares for strategy
 S = nmf_on_X(X, k=4)  # any NMF; normalize columns
 est = estimate_A_from_series(S, X, v, k=4, ridge=1e-2)
 A = est['A']
-ess = [r for r in find_ESS(A) if r['is_ess']]
+certified = [r for r in find_ESS(A) if r['ess_status'] == 'certified']
 ```
 
 See `BIO_DEMO.ipynb` for a runnable synthetic example you can adapt to real longitudinal datasets (microbiome, plankton, immune challenges, or tumor subclones).

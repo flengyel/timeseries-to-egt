@@ -2,6 +2,9 @@
 
 This note shows how to analyze **capital–labor dynamics** with the `ts2eg` pipeline in a value‑neutral way. The method separates **common‑interest** gains from **zero‑sum** redistribution and offers falsifiable tests for **systematic surplus capture** by either side.
 
+> Nash, ESS-certificate, and local-stability outputs are descriptive properties
+> of the fitted operator. They are not calibrated tests of capital–labor data.
+
 ---
 
 ## Mapping
@@ -53,7 +56,7 @@ the difference of **time‑averaged centered payoffs** (capital minus labor).
 
 - Learn strategies `S` with `nmf_on_X`; fit `A` with `estimate_A_from_series(S, X, v, k, λ)`.\n
 - Decompose $A=A_s+A_a$: symmetric $A_s$ (potential‑like) vs skew $A_a$ (cycles). Large $\|A_a\|$ flags **bargaining/rotation cycles** (buybacks → wage catch‑up → automation → …).
-- Search for **ESS** with `find_ESS(A)`. ESS persistence across rolling windows indicates a **stable allocation regime**; loss of ESS suggests strategic instability/regime change.
+- Report descriptive `ess_status` records with `find_ESS(A)`. Changes across rolling windows do not by themselves establish allocation-regime changes; local stability is a separate diagnostic.
 - Always include **nulls** (row shifts; phase‑scramble if applicable).
 
 ---
@@ -69,7 +72,7 @@ v = value_gradient_payoffs(X, J_future=roic_lead, ridge=1e-2)  # or distribution
 S, H = nmf_on_X(X, k=3, iters=300, seed=1)
 est = estimate_A_from_series(S, X, v, k=3, ridge=1e-2)
 A, R2 = est['A'], est['R2']
-ess = [r for r in find_ESS(A) if r['is_ess']]
+certified = [r for r in find_ESS(A) if r['ess_status'] == 'certified']
 ```
 
 ---

@@ -2,6 +2,9 @@
 
 This note explains how to apply the pipeline to public-company financials.
 
+> Nash, ESS-certificate, and local-stability outputs are descriptive properties
+> of the fitted operator. They are not calibrated tests of the financial data.
+
 ## What you model
 
 Treat line items as **players** and quarterly history as a multivariate series:
@@ -37,16 +40,17 @@ Interpretation: `v_i(t)` is the marginal contribution of item *i* to `J_future` 
 
 1) Learn `S` (items × K) via nonnegative matrix factorization (NMF) or archetypal analysis (outside this module). Columns are **capital allocation archetypes**.
 
-2) Estimate a **strategy-level payoff operator** `A` and search for ESS:
+2) Estimate a **strategy-level payoff operator** `A` and report descriptive equilibrium diagnostics:
 
 ```python
 from gameify_timeseries import estimate_A_from_series, find_ESS
 est = estimate_A_from_series(S, X_perp, v, k=K, ridge=1e-2)
 A = est["A"]
-ess = [r for r in find_ESS(A, tol=1e-8, max_support=K) if r["is_ess"]]
+certified = [r for r in find_ESS(A, tol=1e-8, max_support=K)
+             if r["ess_status"] == "certified"]
 ```
 
-An ESS is a **stable mixture of archetypes** under the learned payoff field tied to your value target.
+An `ess_status="certified"` record satisfies the implemented payoff-based ESS certificate for the fitted operator. Local dynamic stability is reported separately.
 
 ## Practical guidance
 

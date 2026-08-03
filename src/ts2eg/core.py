@@ -16,7 +16,7 @@ Game constructions:
 
 EGT add-ons:
   - estimate_A_from_series(S, X, v, k, ridge): fit k×k payoff operator A from series
-  - find_ESS(A, ...): enumerate mixed Nash candidates and test ESS via replicator Jacobian
+  - find_ESS(A, ...): describe Nash candidates, ESS certificates, and local stability
 
 Finance & Bio helpers:
   - project_out_identities(X, C): remove linear accounting identities
@@ -317,30 +317,86 @@ def estimate_A_from_series(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, 
         "Cgx": Cgx,
     }
 
+def _orthonormal_tangent_basis(dimension: int) -> np.ndarray:
+    """Return an orthonormal basis for vectors whose coordinates sum to zero.
+
+    For ``dimension == 1`` the tangent space is zero-dimensional and the
+    returned array has shape ``(1, 0)``.
+    """
+    if isinstance(dimension, (bool, np.bool_)) or not isinstance(
+        dimension, (int, np.integer)
+    ) or dimension < 1:
+        raise ValueError("dimension must be a positive integer")
+    return helmert_Q(int(dimension))[:, 1:]
+
+
+def _replicator_jacobian(A: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """Return the ambient Jacobian of the replicator vector field at ``x``."""
+    payoffs = A @ x
+    mean_payoff = float(x @ payoffs)
+    mean_gradient = (A + A.T) @ x
+    centered_rows = A - np.ones((A.shape[0], 1)) @ mean_gradient.reshape(1, -1)
+    return np.diag(payoffs - mean_payoff) + np.diag(x) @ centered_rows
+
+
+def _linear_stability_status(eigenvalues: np.ndarray, threshold: float):
+    """Classify a linearization without guessing in non-hyperbolic cases."""
+    real_parts = np.real(np.asarray(eigenvalues))
+    if np.any(real_parts > threshold):
+        return "unstable", False
+    if real_parts.size == 0 or np.all(real_parts < -threshold):
+        return "certified", True
+    return "undetermined", None
+
+
 def find_ESS(A: np.ndarray, tol: float = 1e-8, max_support: int | None = None):
     """
-    Enumerate mixed Nash candidates and test ESS for the replicator dynamic in a symmetric k-strategy game.
+    Enumerate descriptive equilibrium diagnostics for a symmetric game.
 
     For each support J:
       - Solve for (x_J, alpha): A_JJ x_J = alpha * 1_J, 1^T x_J = 1.
       - Nash check: (A x)_i = alpha on J, and <= alpha off J (within tolerances).
-      - ESS: (i) strict disadvantage off J; (ii) Jacobian of replicator restricted to the
-        tangent of J has eigenvalues with negative real parts.
+      - ESS certificate: require every unused pure strategy to be strictly worse
+        and the symmetric part of A_JJ to be negative definite on the
+        within-support tangent space.
+      - Local dynamic stability: separately inspect the replicator Jacobian on
+        that tangent and the transverse invasion eigenvalues.
 
-    Returns a list of dicts {support, x, alpha, is_nash, is_ess, eigvals_tangent}.
+    ``ess_status`` is ``"certified"``, ``"rejected"``, or ``"undetermined"``.
+    An off-support payoff tie makes the simple certificate undetermined when the
+    within-support quadratic condition passes.  ``is_ess`` is retained only as
+    a compatibility alias for ``ess_status == "certified"``; a false value is
+    not a complete non-ESS decision when the status is undetermined.
+
+    ``is_locally_asymptotically_stable`` is a separate hyperbolic linearization
+    result: ``True`` when every reported mode is strictly stable, ``False`` when
+    a mode is unstable, and ``None`` when zero-real-part modes make the linear
+    diagnostic inconclusive.  It is neither an ESS test nor a significance
+    statistic.  ``eigvals_tangent`` remains as a compatibility alias for
+    ``jacobian_tangent_eigenvalues``.
     """
-    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+    A = np.asarray(A, dtype=float)
+    if A.ndim != 2 or A.shape[0] != A.shape[1] or A.shape[0] == 0:
         raise ValueError("A must be square (k × k)")
+    if not np.all(np.isfinite(A)):
+        raise ValueError("A must contain only finite values")
+    if not np.isfinite(tol) or tol <= 0:
+        raise ValueError("tol must be positive and finite")
     k = A.shape[0]
     import itertools
 
     if max_support is None:
         max_support = k
+    if isinstance(max_support, (bool, np.bool_)) or not isinstance(
+        max_support, (int, np.integer)
+    ) or max_support < 1:
+        raise ValueError("max_support must be a positive integer or None")
 
     results = []
     for s in range(1, min(max_support, k) + 1):
         for J in itertools.combinations(range(k), s):
             J = list(J)
+            unused = [i for i in range(k) if i not in J]
             AJJ = A[np.ix_(J, J)]
             oneJ = np.ones((s, 1))
             # Solve KKT: [AJJ | -1][xJ; alpha] = 0, [1^T | 0][xJ; alpha] = 1
@@ -351,57 +407,95 @@ def find_ESS(A: np.ndarray, tol: float = 1e-8, max_support: int | None = None):
             except np.linalg.LinAlgError:
                 continue
             xJ = sol[:s, 0]
-            alpha = float(sol[s, 0])
-            if np.any(xJ < -1e-6):
+            if np.any(xJ <= tol):
                 continue
             # Embed in simplex
             x = np.zeros(k)
-            x[J] = np.maximum(xJ, 0.0)
+            x[J] = xJ
             x = x / x.sum()
 
             # Nash inequalities
             u = A @ x
-            on_support_ok = np.all(np.abs(u[J] - alpha) <= 1e-5 + 1e-5 * np.abs(alpha))
-            off_support_ok = np.all(u[[i for i in range(k) if i not in J]] <= alpha + 1e-7)
-            is_nash = on_support_ok and off_support_ok
+            alpha = float(np.mean(u[J]))
+            # Scale only payoff differences so A -> A + 1 c.T cannot change
+            # the numerical Nash or strict-off-support classification.
+            payoff_scale = max(1.0, float(np.max(np.abs(u - alpha))))
+            payoff_threshold = tol * payoff_scale
+            on_support_ok = bool(np.all(np.abs(u[J] - alpha) <= payoff_threshold))
+            off_gaps = alpha - u[unused]
+            off_support_ok = bool(np.all(off_gaps >= -payoff_threshold))
+            is_nash = bool(on_support_ok and off_support_ok)
+
+            # ESS quadratic certificate on an orthonormal within-support tangent.
+            tangent_basis = _orthonormal_tangent_basis(s)
+            symmetric_AJJ = (AJJ + AJJ.T) / 2.0
+            ess_tangent_matrix = tangent_basis.T @ symmetric_AJJ @ tangent_basis
+            ess_tangent_eigenvalues = np.linalg.eigvalsh(ess_tangent_matrix)
+            ess_scale = (
+                max(1.0, float(np.linalg.norm(ess_tangent_matrix, ord=2)))
+                if ess_tangent_matrix.size
+                else 1.0
+            )
+            ess_threshold = tol * ess_scale
+            tangent_negative = bool(
+                ess_tangent_eigenvalues.size == 0
+                or np.all(ess_tangent_eigenvalues < -ess_threshold)
+            )
+            off_strict = bool(np.all(off_gaps > payoff_threshold))
+
             if not is_nash:
-                results.append({"support": tuple(J), "x": x, "alpha": alpha,
-                                "is_nash": False, "is_ess": False, "eigvals_tangent": None})
-                continue
-
-            # Strict disadvantage off support
-            off_strict = True
-            for i in range(k):
-                if i not in J and u[i] >= alpha - 1e-8:
-                    off_strict = False
-                    break
-
-            # Replicator Jacobian on tangent
-            # Replicator: dot x_i = x_i( (A x)_i - x^T A x )
-            bar_u = float(x @ u)
-            c = (A + A.T) @ x
-            Jmat = np.zeros((k, k))
-            for i in range(k):
-                for j in range(k):
-                    Jmat[i, j] = (u[i] - bar_u) * (1.0 if i == j else 0.0) + x[i] * (A[i, j] - c[j])
-
-            if s >= 2:
-                # Tangent basis within support: e_1 - e_s, ..., e_{s-1} - e_s
-                B = np.zeros((k, s - 1))
-                for r in range(s - 1):
-                    e = np.zeros(k); e[J[r]] = 1.0; e[J[-1]] = -1.0
-                    B[:, r] = e
-                JT = B.T @ Jmat @ B
-                eigvals = np.linalg.eigvals(JT)
+                ess_status = "rejected"
+                ess_reason = "candidate violates the symmetric Nash payoff inequalities"
+            elif not tangent_negative:
+                ess_status = "rejected"
+                ess_reason = "symmetric payoff part is not negative definite on the support tangent"
+            elif off_strict:
+                ess_status = "certified"
+                ess_reason = "strict off-support disadvantage and negative tangent quadratic form"
             else:
-                eigvals = np.array([Jmat[J[0], J[0]]])
+                ess_status = "undetermined"
+                ess_reason = "an unused pure strategy ties, so the simple ESS certificate is incomplete"
 
-            stable_tangent = np.all(np.real(eigvals) < -np.sqrt(tol))
-            is_ess = is_nash and off_strict and stable_tangent
+            # Local dynamic stability is a separate linearization diagnostic.
+            bar_u = float(x @ u)
+            jacobian = _replicator_jacobian(A, x)
+            embedded_tangent = np.zeros((k, s - 1))
+            embedded_tangent[J, :] = tangent_basis
+            jacobian_tangent_matrix = embedded_tangent.T @ jacobian @ embedded_tangent
+            jacobian_tangent_eigenvalues = np.linalg.eigvals(jacobian_tangent_matrix)
+            transverse_invasion_eigenvalues = u[unused] - bar_u
+            all_dynamic_eigenvalues = np.concatenate(
+                [jacobian_tangent_eigenvalues, transverse_invasion_eigenvalues]
+            )
+            stability_threshold = tol * max(
+                1.0,
+                float(np.max(np.abs(all_dynamic_eigenvalues), initial=0.0)),
+            )
+            if on_support_ok:
+                stability_status, is_stable = _linear_stability_status(
+                    all_dynamic_eigenvalues, stability_threshold
+                )
+            else:
+                stability_status, is_stable = "undetermined", None
 
-            results.append({"support": tuple(J), "x": x, "alpha": alpha,
-                            "is_nash": True, "is_ess": bool(is_ess),
-                            "eigvals_tangent": eigvals})
+            results.append({
+                "support": tuple(J),
+                "x": x,
+                "alpha": alpha,
+                "is_nash": is_nash,
+                "ess_status": ess_status,
+                "ess_reason": ess_reason,
+                "is_ess": ess_status == "certified",
+                "tangent_basis": tangent_basis,
+                "ess_tangent_eigenvalues": ess_tangent_eigenvalues,
+                "unused_strategies": tuple(unused),
+                "off_support_payoff_gaps": off_gaps,
+                "stability_status": stability_status,
+                "is_locally_asymptotically_stable": is_stable,
+                "jacobian_tangent_eigenvalues": jacobian_tangent_eigenvalues,
+                "transverse_invasion_eigenvalues": transverse_invasion_eigenvalues,
+                "eigvals_tangent": jacobian_tangent_eigenvalues,
+            })
     return results
 
 # ---------- Finance helpers ----------
@@ -603,7 +697,7 @@ if __name__ == "__main__":
     A = est["A"]
     print("A shape:", A.shape, "R2:", round(est["R2"], 3))
 
-    ess_list = find_ESS(A, tol=1e-8, max_support=3)
-    n_ess = sum(1 for r in ess_list if r["is_ess"])
-    n_nash = sum(1 for r in ess_list if r["is_nash"])
-    print("Nash candidates:", n_nash, "ESS found:", n_ess)
+    equilibrium_records = find_ESS(A, tol=1e-8, max_support=3)
+    n_nash = sum(1 for r in equilibrium_records if r["is_nash"])
+    n_certified = sum(1 for r in equilibrium_records if r["ess_status"] == "certified")
+    print("Descriptive Nash candidates:", n_nash, "ESS-certified:", n_certified)

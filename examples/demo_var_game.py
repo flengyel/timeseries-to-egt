@@ -3,7 +3,10 @@
 Minimal end-to-end demo:
 - synthesize X (N x T)
 - seasonal information-sharing game -> payoffs
-- NMF strategies -> estimate A (ridge) -> ESS
+- NMF strategies -> estimate A (ridge) -> descriptive equilibrium diagnostics
+
+Nash and ESS-certificate results describe the fitted operator only. They are
+not hypothesis tests or evidence about the data-generating process.
 """
 import argparse, numpy as np
 import ts2eg as gm
@@ -48,7 +51,10 @@ def main():
     A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=args.k, ridge=args.ridge)["A"]
 
     res = gm.find_ESS(A, tol=1e-8, max_support=args.k)
-    print("Nash:", sum(r["is_nash"] for r in res), " ESS:", sum(r["is_ess"] for r in res))
+    print(
+        "Descriptive Nash:", sum(r["is_nash"] for r in res),
+        " ESS-certified:", sum(r["ess_status"] == "certified" for r in res),
+    )
 
 if __name__ == "__main__":
     main()

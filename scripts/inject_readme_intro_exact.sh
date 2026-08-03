@@ -16,16 +16,14 @@ blk="$(mktemp)"
 cat > "$blk" <<'MD'
 <!-- ts2eg-intro-exact-start -->
 
-## Introduction — what `ts2eg` tests
+## Introduction
 
-`ts2eg` is an **inverse evolutionary game theory** pipeline that tests whether a multivariate time series $X\in\mathbb{R}^{N\times T}$ contains **competitive (zero-sum) strategic interaction**.
+`ts2eg` maps a multivariate time series $X\in\mathbb{R}^{N\times T}$ to specified payoff fields, fitted evolutionary-game operators, and descriptive equilibrium diagnostics.
 
-* The test asks: after removing individual dynamics and shared environment, **is there evidence that agents interact through relative payoffs** consistent with replicator dynamics?
-* The pipeline **projects away common-interest effects** ($M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top$) and **retains only the zero-sum signal** ($M_Z=I_N-M_I$). A purely cooperative process (signal in the $M_I$ direction) is **filtered out** and yields a null result.
+* The pipeline separates common-interest effects ($M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top$) from relative-payoff effects ($M_Z=I_N-M_I$).
+* Nash, ESS-certificate, and local-stability results describe the fitted operator only.
 
-**Hypotheses.**
-$H_0$: any apparent equilibrium structure arises from per-series autocorrelation only (no cross-player coupling).
-$H_1$: there exists a centered payoff operator $A$ in strategy space that produces an ESS under replicator dynamics; the effect exceeds the IAAFT surrogate null.
+> **Inferential status:** the former surrogate ESS-frequency procedure is uncalibrated, deprecated, and must not be used as a p-value or hypothesis test. This milestone introduces no replacement inferential test.
 
 See mathematical background: `docs/ts2eg_math_background.tex`.
 
@@ -37,8 +35,7 @@ See mathematical background: `docs/ts2eg_math_background.tex`.
 | 2. Payoff induction     | $X$             | VAR information-sharing (ridge) | Per-time payoffs $v(t)$                                  |
 | 3. Strategy learning    | $X$             | Dictionary learning (NMF)       | $S\in\mathbb{R}^{N\times k}$, mixtures $x(t)\in\Delta_k$ |
 | 4. Game estimation      | $v_Z(t),\,x(t)$ | Centered ridge regression       | $A\in\mathbb{R}^{k\times k}$                             |
-| 5. Equilibrium analysis | $A$             | Replicator Jacobian test        | ESS presence/absence                                     |
-| 6. Significance         | $X$             | IAAFT surrogates                | Empirical $p$-value                                      |
+| 5. Equilibrium analysis | $A$             | Nash checks and ESS certificate | Descriptive statuses and stability eigenvalues           |
 
 ## Mathematical setup (minimal)
 
@@ -49,22 +46,21 @@ See mathematical background: `docs/ts2eg_math_background.tex`.
 
   $$
     C_{xx}=X_k X_k^\top,\quad C_{gx}=G_c X_k^\top,\quad
-    A = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\ \rho=\texttt{ridge},\quad
-    A\leftarrow M_Z^{(k)}A M_Z^{(k)}.
+    A_{\mathrm{raw}} = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\ \rho=\texttt{ridge},\quad
+    A=M_Z^{(k)}A_{\mathrm{raw}}.
   $$
 
-  Code path uses `np.linalg.solve` with `pinv` fallback and enforces row/column centering.
-* **Dynamics/ESS.** Replicator $\dot{x}_i=x_i((Ax)_i-x^\top A x)$. `find_ESS` enumerates supports and tests local stability via the Jacobian on the tangent space.
+  Code path uses `np.linalg.solve` with `pinv` fallback and enforces $\mathbf{1}^\top A=0$ without right-centering.
+* **Descriptive equilibria.** Replicator $\dot{x}_i=x_i((Ax)_i-x^\top A x)$. `find_ESS` reports Nash checks, an ESS certificate, and separate local-stability eigenvalues.
 
-## What a positive result means
+## Interpretation
 
-* **Positive (reject $H_0$):** evidence for **competitive, zero-sum interaction** in $X$ that cannot be explained by per-series autocorrelation alone.
-* **Null:** either no strategic coupling, or only cooperative/common-interest structure (deliberately excluded by $M_Z$).
+Equilibrium statuses are properties of the fitted operator, not inferential conclusions about the data-generating process.
 
 ## Numerical/robustness notes
 
 * Invariance to level shifts via $M_Z$.
-* Centered operator $A$ ($A\mathbf{1}=0$ and $\mathbf{1}^\top A=0$) by construction.
+* Canonical operator $A$ satisfies $\mathbf{1}^\top A=0$; $A\mathbf{1}=0$ is not imposed.
 * Ridge regularization with pseudo-inverse fallback for near-singular $C_{xx}$.
 * Weighted variants guard against $\sum w=0$.
 * Reproducible examples (`--seed`), NumPy 2-compatible.

@@ -8,6 +8,7 @@ if os.path.isdir(_src) and _src not in sys.path:
 import ts2eg as gm
 from ts2eg import extensions as ext
 import numpy as np
+import pytest
 
 def synthetic_series(N=5, T=360, seed=321):
     rng = np.random.default_rng(seed)
@@ -59,8 +60,9 @@ def test_surrogate_harness_bounds():
     S, H = gm.nmf_on_X((X - X.min(axis=1, keepdims=True)) / (X.max(axis=1, keepdims=True) - X.min(axis=1, keepdims=True) + 1e-9),
                         k=3, iters=120, seed=3, normalize="l2")
     w = np.array([0.6, 0.9, 1.0, 0.8, 0.7])[:X.shape[0]]
-    summ = ext.surrogate_ess_frequency(S, X_std, X_std, k=S.shape[1], ridge=1e-3,
-                                       num_surrogates=3, iaaft_iters=30, weights=w, seed=42)
+    with pytest.warns(DeprecationWarning, match="deprecated and uncalibrated"):
+        summ = ext.surrogate_ess_frequency(S, X_std, X_std, k=S.shape[1], ridge=1e-3,
+                                           num_surrogates=3, iaaft_iters=30, weights=w, seed=42)
     assert 0.0 <= summ["ess_rate"] <= 1.0
     assert 0.0 <= summ["nash_rate"] <= 1.0
     assert 0.0 <= summ["R2_mean"] <= 1.0
@@ -76,6 +78,7 @@ def test_find_ESS_known_games():
     full = [r for r in res if set(r['support']) == {0,1,2} and r['is_nash']]
     assert len(full) >= 1
     assert not any(r['is_ess'] for r in full)
+    assert all(r['ess_status'] == 'rejected' for r in full)
 
     # Hawk-Dove (anti-coordination): mixed ESS
     A_hd = np.array([[0, 3],
@@ -84,3 +87,4 @@ def test_find_ESS_known_games():
     mixed = [r for r in res2 if set(r['support']) == {0,1} and r['is_nash']]
     assert len(mixed) >= 1
     assert any(r['is_ess'] for r in mixed)
+    assert any(r['ess_status'] == 'certified' for r in mixed)

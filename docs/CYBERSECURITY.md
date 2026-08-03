@@ -2,6 +2,9 @@
 
 This note explains how to use the `gamify-timeseries` pipeline for **IDS/SIEM/EDR/NDR** governance, deception portfolios, and response orchestration.
 
+> Nash, ESS-certificate, and local-stability outputs are descriptive properties
+> of the fitted operator. They are not calibrated tests of the security data.
+
 ---
 
 ## Mapping
@@ -10,7 +13,7 @@ This note explains how to use the `gamify-timeseries` pipeline for **IDS/SIEM/ED
 - **Signals (`X ∈ ℝ^{N×T}`)**: per-interval shares of alerts/compute/triage time per player (columns sum to 1).\n
 - **Strategies (`S`)**: archetypes of detector usage learned by NMF/archetypal analysis (column-normalized, nonnegative). Each time \(t\), the system is a mix \(x(t) \in \Delta_k\).\n
 - **Payoffs (`v`)**: **information-gain** toward an external target \(J\): negative future incident cost (dwell time, lateral spread, escalations), SLA success, or risk score. Use rolling LOFO ablation: `info_gain_payoffs(X, J, window)`.\n
-- **Operator (`A`)**: estimated strategy-level interaction field; decompose into symmetric \(A_s\) (potential-like) and skew \(A_a\) (cycles). ESS = stable detector mix.
+- **Operator (`A`)**: estimated strategy-level interaction field; decompose into symmetric \(A_s\) (potential-like) and skew \(A_a\) (cycles). ESS certification and local dynamic stability are reported separately.
 
 ---
 
@@ -30,7 +33,7 @@ This note explains how to use the `gamify-timeseries` pipeline for **IDS/SIEM/ED
 
 4. **Segmented lateral-movement monitoring**\n
    - Players: segment-specific sensors. Target `J`: −(cross-segment infection) at horizon \(H\).\n
-   - Readout: \(A_a\) reveals attack–defense oscillations; ESS breakdown flags regime shifts.\n
+   - Readout: \(A_a\) describes fitted attack–defense rotation; changes in descriptive equilibrium diagnostics can motivate, but do not establish, a regime-shift analysis.\n
 
 5. **Red-team exercises as controlled interventions**\n
    - Use toggled rules/assets to validate causal direction: does the vector field predict the observed reallocation?\n
@@ -60,7 +63,7 @@ v = info_gain_payoffs(X, J, ridge=1e-2, window=168)  # weekly window (hourly dat
 S = nmf_on_X(X, k=4)  # any nonnegative NMF; normalize columns
 est = estimate_A_from_series(S, X, v, k=4, ridge=1e-2)
 A = est['A']
-ess = [r for r in find_ESS(A) if r['is_ess']]
+certified = [r for r in find_ESS(A) if r['ess_status'] == 'certified']
 ```
 
 ---

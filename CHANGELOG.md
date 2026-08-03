@@ -12,6 +12,19 @@
 - Return the ridge estimate as `A_raw` from both operator estimators while
   keeping public `A` as the canonical representative satisfying `1.T @ A == 0`.
 
+### Equilibria
+- Separate symmetric Nash checks, ESS certification, and local replicator
+  stability in `find_ESS` records.
+- Add three-state `ess_status`, orthonormal tangent bases, symmetric-part
+  eigenvalues, transverse invasion eigenvalues, and an independently reported
+  hyperbolic stability status. Pure supports now use a zero-dimensional tangent.
+- Retain `is_ess` as an alias for `ess_status == "certified"`; it is not a
+  complete non-ESS decision when the status is `"undetermined"`.
+
+### Deprecations
+- Deprecate `surrogate_ess_frequency` with `DeprecationWarning`. Its frequency
+  is an uncalibrated legacy descriptive diagnostic, not a p-value or test.
+
 ## v0.1.1 — 2025-09-01
 ### API
 - Rename regularization arg **`lambda_` → `ridge`** in:
