@@ -1,5 +1,11 @@
 # Statistical contract
 
+> **Status:** This document specifies the repair; it does not describe an
+> implemented estimator. The current legacy `estimate_A_from_series` path fits
+> the contemporaneous payoff field `Gc ~= A @ Xk`, does not use centered
+> log-ratio motion, returns no held-out dynamic score, and has no validated
+> detection capability. The observed-mixture repair begins at Milestone 3.
+
 ## 1. Estimand
 
 For mixtures `x(t) in Delta_k`, the continuous replicator equation is

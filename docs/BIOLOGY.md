@@ -1,109 +1,124 @@
-# BIOLOGY: Ecological & Biomedical Applications of Time-Series → EGT
+# BIOLOGY: Exploratory Payoff-Field Applications
 
-This document summarizes **how to use the pipeline in biology**, with payoff definitions that are standard to ecologists, microbiologists, and cancer biologists.
+This note records biological input and payoff conventions that can exercise the
+current legacy `ts2eg` compatibility path. It does not recommend that path as a
+detector or establish that inferred latent coordinates follow replicator
+dynamics.
 
+The legacy pipeline is scientifically flawed as a detection procedure and has no
+validated ability to detect biological dynamics, interactions, regimes, cycles,
+ESS in data, or treatment effects.
+
+The specified repair is the unimplemented Milestone-3 observed-mixture motion
+estimator: supplied mixtures are transformed to centered log-ratio increments and
+used to fit a canonical motion operator. Nothing in the current compatibility
+path is a substitute for that estimator.
+
+> **Current status.** NMF is available as a reconstruction tool, not as a
+> validated selector of replicator coordinates. `estimate_A_from_series` fits a
+> contemporaneous payoff field, not mixture motion, and its `R2` is in-sample.
 > Nash, ESS-certificate, and local-stability outputs are descriptive properties
-> of the fitted operator. They are not calibrated tests of the biological data.
+> of that fitted operator. No biological null test is validated at this
+> milestone.
 
----
+## Observations and latent components
 
-## Players, signals, strategies
+- Rows may represent microbial taxa or guilds, phytoplankton groups, immune-cell
+  modules, tumor subclones, or pathway modules.
+- Let `X` have shape `(N, T)`. Counts and relative abundances answer different
+  questions and should not be interchanged silently.
+- `nmf_on_X` produces nonnegative reconstruction factors. The legacy estimator
+  does not use the returned coefficient matrix `H`; it normalizes the loading
+  matrix and independently re-infers simplex coefficients for each observation.
+  These coefficients are exploratory latent components, not identified
+  ecological strategies.
+- Fit the basis and every preprocessing transformation on the same data scale.
+  An inferential analysis would additionally fit them on training data only and
+  freeze them before validation or test evaluation.
 
-- **Players** = measured entities that compete for resources or space: microbial taxa/guilds, phytoplankton groups, immune cell modules, tumor subclones, or pathway modules.\n
-- **Signal matrix** `X ∈ R^{N×T}` = time series per player. For microbes/subclones, `X` is typically **relative abundances** (compositional). For counts, you MAY use raw counts for payoff construction and normalized shares for strategy inference.\n
-- **Strategies** `S = [s₁…s_k]` learned by **NMF/archetypal analysis** on `X` (nonnegative, column-normalized). Each column is an **archetypal guild/state**. The pipeline infers the mixture `x(t) ∈ Δ_k` (simplex) over time.
+## Candidate payoff definitions
 
-> Why strategies? You typically have many taxa/genes but a small number of **ecological roles**; strategies compress the system to interpretable components.
+### Per-capita growth
 
----
+For strictly positive counts or biomass,
 
-## Payoff definitions (domain-standard)
-
-### 1) Per-capita growth rate (Malthusian fitness) — *most interpretable*
-Let `n_i(t)` be counts (or biomass) for player `i`. The **per-capita growth rate** is
 \[
-v_i(t) \;=\; \frac{\log(n_i(t+1)) - \log(n_i(t))}{Δt}.
+v_i(t)=\frac{\log n_i(t+1)-\log n_i(t)}{\Delta t}.
 \]
-This is the discrete-time Malthusian fitness used across ecology, microbiology, and cancer dynamics.
 
-- In code: `growth_payoffs(counts, dt, pad)` returns `v ∈ R^{N×T}`.\n
-- If only relative abundances `p_i(t)` are available, treat `n_i(t)=p_i(t)·N_total(t)` with an offset; or work with **log-ratio** growth using a reference taxon.\n
-- For single-cell lineage or tumor subclones, use **clone counts** (ctDNA-inferred or deconvolved) with purity/coverage adjustments.
+`growth_payoffs(counts, dt, pad)` computes this finite-difference series. Its
+small numerical offset for zero counts is a computational convention that must
+be reported and given a biological interpretation.
 
-**Interpretation:** `v_i(t)>0` means taxon/subclone `i` is increasing per capita at time `t`. The pipeline centers payoffs across players (replicator invariance) to focus on trade-offs.
+Relative abundances alone do not determine absolute per-capita growth. Writing
+`n_i(t) = p_i(t) N_total(t)` is valid only when total abundance is observed or
+otherwise justified. Without it, use an explicitly relative log-ratio analysis
+and do not claim recovery of aggregate growth.
 
-### 2) Information-gain payoffs for a scalar endpoint
-If a scalar endpoint exists (e.g., total biomass at horizon `H`, metabolite concentration, symptom score), define payoffs as **contribution to forecasting** that endpoint:
+### Predictive ablation
 
-- Fit a simple predictor of `J_{t+H}` from `X_t` with ridge and compute **Leave-One-Feature-Out** (LOFO) **MSE improvements**.\n
-- In code: `info_gain_payoffs(X, J_future, ridge, window)` returns `v ∈ R^{N×T}` with `v_i(t) = MSE_{−i} - MSE_full` (nonnegative means feature `i` helps).
+`info_gain_payoffs(X, J_future, ridge, window)` computes leave-one-feature-out
+ridge MSE differences for a chosen future endpoint. The current helper fits and
+scores on the same global or rolling sample; its global output is constant over
+time. The result is an in-sample predictive association, not
+information-theoretic information, causal contribution, or biological fitness.
 
-**Interpretation:** Channels that consistently improve target prediction carry positive payoffs; the centered component highlights relative contributions.
+## Aggregate and relative channels
 
----
+For a player-level payoff vector, write
 
-## Model mapping and intuition
+\[
+v(t)=\bar v(t)\mathbf 1+v^Z(t),\qquad
+v^Z(t)=v(t)-\bar v(t)\mathbf 1.
+\]
 
-- **Centering across players** (`M_Z`): replicator dynamics only depend on **relative** fitness. Subtracting the player-average payoff isolates competition/coordination signals.\n
-- **Replicator vs LV:** When per-capita growth is approximately linear in the strategy mixture (`f(x) = A x`), replicator dynamics on `x` provide a compressed **interaction field** akin to LV but in **strategy space**.\n
-- **A decomposition:** Split `A` into symmetric `A_s` (potential-like, aligning to a scalar objective) and skew `A_a` (cyclic trade-offs). Large `||A_a||` flags rock–paper–scissors dynamics, predator–prey–like loops, or resource switching cycles.
+The aggregate channel and mean-zero relative channel carry different
+information. The legacy estimator passes only `v^Z` forward and discards the
+aggregate channel. It therefore cannot measure aggregate creation, destruction,
+or population growth. Mean centering is a channel definition; it is not evidence
+of competition, coordination, or a zero-sum game.
 
----
+## Legacy descriptive fit
 
-## Practical workflow
+The current fit estimates the contemporaneous relation
 
-1. **Preprocess**\n
-   - Denoise (winsorize outliers, filter rare taxa).\n
-   - If compositional: use relative abundances for `X` (strategy inference) and counts/log-counts for growth payoffs.\n
-   - Handle seasonality (e.g., 7-day/annual) with fixed effects or differences.\n
+\[
+G_c\approx A X_k.
+\]
 
-2. **Strategies**\n
-   - Learn `S` with NMF (`k = 3–6` typical); interpret columns as **guilds** (e.g., oligotroph vs copiotroph) or **clonal states**.\n
+It does not use changes in `X_k` and does not estimate an operator that generated
+mixture motion. The symmetric and antisymmetric parts of `A` are algebraic
+summaries of the fitted payoff field. A large antisymmetric norm does not by
+itself establish ecological cycles.
 
-3. **Payoffs**\n
-   - Prefer `growth_payoffs` when counts exist; otherwise `info_gain_payoffs` to a meaningful endpoint `J`.\n
+`find_ESS(A)` reports descriptive Nash, ESS-certificate, and local linearization
+records. The support enumerator skips singular KKT systems and may omit continua
+of equilibria. These records do not establish observed stability, basin size,
+treatment response, or regime change.
 
-4. **Fit & analyze**\n
-   - `est = estimate_A_from_series(S, X, v, k, ridge)`.\n
-   - Examine `R²` (held-out if possible), `||A_s||` vs `||A_a||`, and descriptive `ess_status` records via `find_ESS(A)`.\n
-
-5. **Validate**\n
-   - **Nulls:** circular shifts by row; AAFT/phase-scramble; label permutations.\n
-   - **Perturbations:** diet switches, blooms, therapy on/off windows; check that the vector field rotates as expected.\n
-   - **Rolling windows:** regime shifts (seasonal turnover, treatment phases).\n
-
----
-
-## Research directions (examples)
-
-- **Microbiome (human/environmental):** Do guild mixes exhibit ESS across seasons or under diet/antibiotic shocks? Are cyclic trade-offs stronger during blooms?\n
-- **Phytoplankton/zooplankton series:** Seasonal ESS vs turnover; coupling to nutrient/temperature covariates.\n
-- **Immunodynamics:** Module-level reallocation after vaccination/challenge; ESS differences between responders/non-responders.\n
-- **Cancer subclones:** Therapy-induced shifts in `A`; ESS loss at progression; adaptive therapy as guided movement along the replicator vector field.\n
-
----
-
-## Reporting checklist
-
-- Data source, preprocessing, and whether counts or relative abundances were used.\n
-- Strategy basis `S` (heatmap with labels), number of strategies `k`.\n
-- Payoff construction (`growth` vs `info_gain`) and horizon.\n
-- Fit quality (`R²`), symmetry ratio `||A_a||/||A||`, descriptive ESS-certificate statuses, and separately justified basin diagnostics.\n
-- Null controls and robustness (rolling windows, seed sensitivity).\n
-
----
-
-## Minimal code snippet
+## Minimal descriptive example
 
 ```python
-from gameify_timeseries import growth_payoffs, estimate_A_from_series, find_ESS
-# counts: N x T
+from ts2eg import estimate_A_from_series, find_ESS, growth_payoffs, nmf_on_X
+
+# counts: strictly positive N x T abundance data
 v = growth_payoffs(counts, dt=1.0)
-X = counts / (counts.sum(axis=0, keepdims=True) + 1e-12)   # shares for strategy inference
-S = nmf_on_X(X, k=4)  # any NMF; normalize columns
+X = counts / counts.sum(axis=0, keepdims=True)
+
+# Exploratory reconstruction; the estimator re-infers its own simplex coefficients.
+S, _ = nmf_on_X(X, k=4, iters=300, seed=1)
 est = estimate_A_from_series(S, X, v, k=4, ridge=1e-2)
-A = est['A']
-certified = [r for r in find_ESS(A) if r['ess_status'] == 'certified']
+
+A = est["A"]
+in_sample_R2 = est["R2"]
+records = find_ESS(A)
+certified = [r for r in records if r["ess_status"] == "certified"]
 ```
 
-See `BIO_DEMO.ipynb` for a runnable synthetic example you can adapt to real longitudinal datasets (microbiome, plankton, immune challenges, or tumor subclones).
+This example executes the legacy descriptive path only. Circular shifts, phase
+scrambles, label permutations, rolling fits, or changes in ESS records have no
+calibrated inferential interpretation here. Diet changes, therapies, or other
+interventions require a separately specified causal design.
+
+See `notebooks/BIO_DEMO.ipynb` for a stipulated synthetic demonstration. It does
+not validate an empirical biological analysis.

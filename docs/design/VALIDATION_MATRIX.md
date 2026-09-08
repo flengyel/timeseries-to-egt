@@ -1,5 +1,11 @@
 # Validation matrix
 
+> **Status:** This is the validation ladder for the specified repair, not a list
+> of capabilities already implemented or passed. The current suite covers the
+> Milestone-1 geometry and Milestone-2 fitted-matrix equilibrium behavior. The
+> motion-estimation, leakage, recovery, calibration, and power gates below remain
+> future work; the legacy pipeline has no validated detection capability.
+
 ## CI-fast mathematical tests
 
 ### Geometry

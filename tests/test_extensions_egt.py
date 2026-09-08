@@ -31,15 +31,17 @@ def test_weighted_A_left_canonicalization_and_R2():
     X0 = (X - X.min(axis=1, keepdims=True)) / (X.max(axis=1, keepdims=True) - X.min(axis=1, keepdims=True) + 1e-9)
     S, H = gm.nmf_on_X(X0, k=3, iters=150, seed=2, normalize="l2")
     K = S.shape[1]
-    # Standardize X for estimation; use it as payoff field for smoke test
+    # Re-infer mixtures on the same X0 scale used to fit S; keep payoffs separate.
     X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
     w = np.array([0.5, 0.8, 1.0, 0.9, 0.7])[:N]
-    est = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=K, ridge=1e-3, weights=w)
+    est = ext.estimate_A_from_series_weighted(S, X0, X_std, k=K, ridge=1e-3, weights=w)
     A = est["A"]
     assert np.allclose(A, gm.canonicalize_payoff_operator(est["A_raw"]), atol=1e-12)
     # The canonical representative has zero column sums: 1.T @ A == 0.
     assert np.allclose(np.ones(K) @ A, 0.0, atol=1e-8)
-    # Reasonable fit metric
+    assert np.isclose(est["ss_res"], np.sum((est["Gc"] - A @ est["Xk"]) ** 2))
+    assert np.isclose(est["ss_tot"], np.sum(est["Gc"] ** 2))
+    assert np.isclose(est["R2"], 1.0 - est["ss_res"] / est["ss_tot"])
     assert 0.0 <= est["R2"] <= 1.0
 
 def test_iaaft_preserves_sorted_values_and_spectrum():
@@ -56,17 +58,22 @@ def test_iaaft_preserves_sorted_values_and_spectrum():
 
 def test_surrogate_harness_bounds():
     X = synthetic_series()
+    X0 = (X - X.min(axis=1, keepdims=True)) / (X.max(axis=1, keepdims=True) - X.min(axis=1, keepdims=True) + 1e-9)
     X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
-    S, H = gm.nmf_on_X((X - X.min(axis=1, keepdims=True)) / (X.max(axis=1, keepdims=True) - X.min(axis=1, keepdims=True) + 1e-9),
-                        k=3, iters=120, seed=3, normalize="l2")
+    S, H = gm.nmf_on_X(X0, k=3, iters=120, seed=3, normalize="l2")
     w = np.array([0.6, 0.9, 1.0, 0.8, 0.7])[:X.shape[0]]
     with pytest.warns(DeprecationWarning, match="deprecated and uncalibrated"):
-        summ = ext.surrogate_ess_frequency(S, X_std, X_std, k=S.shape[1], ridge=1e-3,
+        summ = ext.surrogate_ess_frequency(S, X0, X_std, k=S.shape[1], ridge=1e-3,
                                            num_surrogates=3, iaaft_iters=30, weights=w, seed=42)
     assert 0.0 <= summ["ess_rate"] <= 1.0
     assert 0.0 <= summ["nash_rate"] <= 1.0
     assert 0.0 <= summ["R2_mean"] <= 1.0
     assert summ["num_surrogates"] == 3
+
+
+def test_weighted_projectors_require_strictly_positive_weights():
+    with pytest.raises(ValueError, match="positive and finite"):
+        ext.weighted_projectors(np.array([1.0, 0.0, 2.0]))
 
 def test_find_ESS_known_games():
     # Rock-Paper-Scissors: mixed Nash, not ESS (neutrally stable)

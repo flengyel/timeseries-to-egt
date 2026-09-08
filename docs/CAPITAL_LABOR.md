@@ -1,101 +1,192 @@
-# CAPITAL–LABOR: Mapping the Theory of the Firm to Evolutionary Games
+# CAPITAL–LABOR: Exploratory Payoff-Field Contrasts
 
-This note shows how to analyze **capital–labor dynamics** with the `ts2eg` pipeline in a value‑neutral way. The method separates **common‑interest** gains from **zero‑sum** redistribution and offers falsifiable tests for **systematic surplus capture** by either side.
+This note records capital–labor input and payoff conventions that can exercise
+the current legacy `ts2eg` compatibility path. It does not recommend that path
+as a detector, estimate capital–labor mixture motion, identify causal
+redistribution, or provide a calibrated test of systematic surplus capture.
 
-> Nash, ESS-certificate, and local-stability outputs are descriptive properties
-> of the fitted operator. They are not calibrated tests of capital–labor data.
+The legacy pipeline is scientifically flawed as a detection procedure and has no
+validated ability to detect capital–labor dynamics, interaction, regimes, cycles,
+ESS in data, redistribution, or surplus capture.
 
----
+The specified repair is the unimplemented Milestone-3 observed-mixture motion
+estimator: supplied mixtures are transformed to centered log-ratio increments and
+used to fit a canonical motion operator. Nothing in the current compatibility
+path is a substitute for that estimator.
 
-## Mapping
+> **Current status.** NMF is a reconstruction tool, not a validated selector of
+> replicator coordinates. `estimate_A_from_series` fits a contemporaneous payoff
+> field and returns an in-sample `R2`. Nash, ESS-certificate, and local-stability
+> records describe only that fitted operator. No observed surplus-capture test is
+> validated at this milestone.
 
-- **Players** (rows): budget/effort competitors whose shares sum to 1 each period, e.g., `LaborComp`, `CapEx`, `R&D`, `SG&A`, `Payouts`.\n
-- **Signals** `X ∈ ℝ^{N×T}`: per‑period **allocation shares** (normalize each column to 1). If you include accounting identities, remove them with `project_out_identities`.\n
-- **Strategies** `S`: **allocation archetypes** learned via nonnegative factorization (`nmf_on_X`). Each time $t$, the firm is a mixture $x(t)\in\Delta_k$ of these archetypes.\n
-- **Payoffs** `v ∈ ℝ^{N×T}`: domain‑legible measures of advantage. The replicator uses the **centered** component $M_Z v$, focusing on **relative** payoffs.\n
+## Observation design
 
----
+Rows may represent allocation or accounting channels such as labor compensation,
+capital expenditure, R&D, SG&A, and payouts. These channels are not automatically
+game-theoretic players. Column normalization to allocation shares is a modeling
+choice and must be documented.
 
-## Payoff definitions
+`nmf_on_X` provides nonnegative reconstruction factors. The legacy estimator
+does not use its returned `H`; it normalizes the loading matrix and independently
+re-infers simplex coefficients for each observation. These coefficients are
+exploratory allocation components, not identified replicator strategies.
 
-1. **Distributional (surplus‑capture) payoff** — direct capital vs labor test.\n
-   - Let `VA` be value added, `W` labor compensation, `P` operating surplus.\n",
-   "   - Define $v_{\text{Labor}}(t) = \Delta\log(W/VA)$ and $v_{\text{Capital}}(t) = \Delta\log(P/VA)$.\n",
-   "   - Assign these to `LaborComp` and `Payouts` rows (others = 0), then center across players.\n",
-   "   - Interpretation: positive centered value for capital concurrent with negative for labor indicates **redistribution toward capital**, given this payoff.\n",
-   "\n",
-2. **Value‑gradient payoff** — managerial lens.\n",
-   "   - Choose horizon $H$ and target $J_{t+H}$ (e.g., **ROIC**, **FCF yield**).\n",
-   "   - Use `value_gradient_payoffs(X, J_future)` to estimate per‑channel gradients; center them.\n",
-   "   - Interpretation: if centered gradients reward payout shares and penalize labor shares, the **shareholder‑value optimum** tilts against labor under the chosen model.\n",
-   "\n",
-3. **Information‑gain payoff** — observational."
-   "   - `info_gain_payoffs(X, J_future, window)` gives leave‑one‑feature‑out forecast improvements; centered values show **relative** leverage.
-Use one payoff family per analysis to keep interpretation clean; report sensitivity across families.
+`project_out_identities` may help diagnose homogeneous accounting constraints,
+but its output can be negative and need not retain column sums. Do not pass that
+output silently to an NMF or allocation-share model. Fit every preprocessing
+transformation and basis on a common scale.
 
----
+## Candidate descriptive payoffs
 
-## Falsifiable test for “systematic surplus capture”
+### Distributional contrast
 
-Define
-$$
-D \;=\; \overline{v^{Z}_{\text{Capital}}} - \overline{v^{Z}_{\text{Labor}}}\,,
-$$
-the difference of **time‑averaged centered payoffs** (capital minus labor).
+For strictly positive value added `VA`, labor compensation `W`, and operating
+surplus `P`, one may define
 
-1. Compute `v` and $v^Z=M_Z v$.
-2. Estimate $D$.
-3. Generate a **row‑shift null** by circularly shifting each row of `v` independently (preserves autocorrelation; breaks cross‑row coordination). Recompute $D$ over `B` surrogates.
-4. Report a z‑score or empirical p‑value.
+\[
+v_L(t)=\Delta\log\!\left(\frac{W(t)}{VA(t)}\right),\qquad
+v_C(t)=\Delta\log\!\left(\frac{P(t)}{VA(t)}\right).
+\]
 
-**Interpretation:** Large positive $D$ with small null probability is **evidence** of systematic surplus capture by capital over labor (conditional on the payoff definition). Negative $D$ indicates the converse. If $D$ ≈ null, the data do not support systematic capture in the window.
+These are changes in selected accounting shares. Operating surplus must not be
+assigned to a `Payouts` channel unless that identification is separately
+justified. A larger capital than labor contrast does not by itself establish a
+conserved transfer, appropriation, or causal capture.
 
----
+### Predictive ridge coefficient
 
-## Dynamic analysis
+`value_gradient_payoffs(X, J_future)` fits one pooled full-sample ridge model
 
-- Learn strategies `S` with `nmf_on_X`; fit `A` with `estimate_A_from_series(S, X, v, k, λ)`.\n
-- Decompose $A=A_s+A_a$: symmetric $A_s$ (potential‑like) vs skew $A_a$ (cycles). Large $\|A_a\|$ flags **bargaining/rotation cycles** (buybacks → wage catch‑up → automation → …).
-- Report descriptive `ess_status` records with `find_ESS(A)`. Changes across rolling windows do not by themselves establish allocation-regime changes; local stability is a separate diagnostic.
-- Always include **nulls** (row shifts; phase‑scramble if applicable).
+\[
+J_{\mathrm{future}}\approx\alpha+\beta^\top X
+\]
 
----
+and returns
 
-## Minimal recipe
+\[
+v_i(t)=\beta_i
+\]
+
+for every time `t`. The output is a time-constant in-sample coefficient
+association under the chosen scaling and penalty. It is not a causal value
+gradient, a marginal contribution, or evidence of a shareholder-value optimum.
+
+### Predictive ablation
+
+`info_gain_payoffs(X, J_future, ridge, window)` computes leave-one-channel-out
+ridge MSE differences on the fitting sample, globally or within each rolling
+window. It is an in-sample predictive association, not held-out information gain,
+causal leverage, rent, or appropriation.
+
+Use one payoff definition per descriptive fit and report sensitivity without
+selecting a definition because it favors a desired interpretation.
+
+## Aggregate and relative channels
+
+For a player-level payoff vector,
+
+\[
+v(t)=\bar v(t)\mathbf 1+v^Z(t),\qquad
+v^Z(t)=v(t)-\bar v(t)\mathbf 1.
+\]
+
+The aggregate and mean-zero relative channels carry different information. The
+legacy estimator discards the aggregate channel and fits only `v^Z`. It
+therefore cannot measure aggregate value creation or destruction. A mean-zero
+relative vector does not establish a zero-sum strategic interaction.
+
+## Why the proposed row-shift test is degenerate
+
+Consider the descriptive contrast
+
+\[
+D=\left\langle v_C^Z\right\rangle_t-
+  \left\langle v_L^Z\right\rangle_t ,
+\]
+
+where \(\langle\cdot\rangle_t\) denotes the time average. At every time,
+
+\[
+v_C^Z(t)-v_L^Z(t)
+=\bigl(v_C(t)-\bar v(t)\bigr)
+ -\bigl(v_L(t)-\bar v(t)\bigr)
+=v_C(t)-v_L(t).
+\]
+
+Hence
+
+\[
+D=\left\langle v_C\right\rangle_t-
+  \left\langle v_L\right\rangle_t.
+\]
+
+Let \(\tau_C\) and \(\tau_L\) be arbitrary circular shifts applied independently
+to the two rows, followed by recomputation of the centered payoff. Circular
+shifts preserve row means, so every surrogate satisfies
+
+\[
+D^*
+=\left\langle\tau_C v_C\right\rangle_t-
+  \left\langle\tau_L v_L\right\rangle_t
+=D.
+\]
+
+The surrogate distribution is therefore a point mass at the observed statistic.
+It supplies no null distribution, z-score, or empirical p-value. For
+`value_gradient_payoffs`, the failure is stronger: each row is constant in time,
+so a circular shift leaves the entire payoff array unchanged.
+
+`D` may be reported as a descriptive difference of time-averaged relative
+payoffs. The existing row-shift procedure cannot test it, and no observed
+surplus-capture test is validated at the current milestone.
+
+## Legacy descriptive operator
+
+The current estimator fits
+
+\[
+G_c\approx A X_k
+\]
+
+at the same times. It does not use changes in `X_k`, so it does not estimate an
+operator that generated allocation motion. The symmetric and antisymmetric parts
+of `A` are algebraic summaries of this payoff-field fit. A large skew norm does
+not identify bargaining cycles, automation cycles, or allocation regimes.
+
+`find_ESS(A)` reports descriptive equilibrium and local-linearization records.
+It skips singular KKT systems and may omit continua of equilibria. Rolling
+changes in `A`, its skew ratio, or its equilibrium records do not establish
+regime change.
+
+## Minimal descriptive example
 
 ```python
-from ts2eg import nmf_on_X, value_gradient_payoffs, estimate_A_from_series, find_ESS
+from ts2eg import (
+    estimate_A_from_series,
+    find_ESS,
+    nmf_on_X,
+    value_gradient_payoffs,
+)
 
-# X: N x T allocation shares (columns sum to 1)
-v = value_gradient_payoffs(X, J_future=roic_lead, ridge=1e-2)  # or distributional Δlog shares
-
-S, H = nmf_on_X(X, k=3, iters=300, seed=1)
+# X: nonnegative N x T allocation shares
+v = value_gradient_payoffs(X, J_future=roic_lead, ridge=1e-2)
+S, _ = nmf_on_X(X, k=3, iters=300, seed=1)
 est = estimate_A_from_series(S, X, v, k=3, ridge=1e-2)
-A, R2 = est['A'], est['R2']
-certified = [r for r in find_ESS(A) if r['ess_status'] == 'certified']
+
+A = est["A"]
+in_sample_R2 = est["R2"]
+records = find_ESS(A)
+certified = [r for r in records if r["ess_status"] == "certified"]
 ```
 
----
+This code executes the legacy descriptive payoff-field path only. Its
+time-constant predictive coefficients and in-sample fit do not validate a
+capital–labor hypothesis.
 
-## Novelty & literature
+Lagging a target or selecting an event window does not remove confounding.
+Causal attribution requires a separately specified intervention, natural
+experiment, randomized variation, or structural identification argument.
 
-- Maps the **theory of the firm** to **evolutionary games** by representing internal allocation as **strategy mixtures** and decomposing observed payoffs into **common‑interest** vs **zero‑sum** components via an explicit projector $M_Z$.
-- Unifies strands from political economy (labor vs capital shares), empirical corporate finance (capital allocation & payouts), and evolutionary dynamics (replicator, ESS), yielding a compact, testable interaction field `A`.
-- Related ideas exist (labor‑share time‑series; meta‑games; inverse population games), but this **end‑to‑end time‑series construction** with domain‑legible payoffs and **stability tests** is a **methods contribution** rather than a purely theoretical advance.
-
----
-
-## Caveats & ethics
-
-- **Endogeneity**: allocations and outcomes co‑determine; prefer lagged targets, event windows (policy/union wins), or instrumented designs.
-- **Measurement**: reports may lack consistent headcount/compensation; triangulate with industry aggregates; document assumptions.
-- **Attribution**: findings are conditional on payoff definition and horizon $H$; report robustness across payoff families.
-- **Reporting**: include negative/ambiguous results; they inform about volatility/nonstationarity rather than “winning.”
-
----
-
-## Files
-
-- `FIRM_DEMO.ipynb`: synthetic example (distributional and value‑gradient payoffs; ESS; nulls).
-- `core.py`: scaffold (`nmf_on_X`, payoff builders, `estimate_A_from_series`, `find_ESS`).
-- `README.md`: project overview and references.
+See `notebooks/FIRM_DEMO.ipynb` for a stipulated synthetic demonstration. It
+must not be treated as null calibration or evidence about observed firms.

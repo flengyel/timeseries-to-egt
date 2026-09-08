@@ -10,7 +10,8 @@ except PackageNotFoundError:
 # Re-export public API from core
 from .core import (
     helmert_Q, projectors, static_game_from_series, var_information_sharing_game,
-    estimate_A_from_series, find_ESS, nmf_on_X,
+    estimate_A_from_series, find_ESS, nmf_on_X, project_out_identities,
+    value_gradient_payoffs, growth_payoffs, info_gain_payoffs,
 )
 from .geometry import (
     canonicalize_payoff_operator, centering_projector, replicator_field,
@@ -29,6 +30,7 @@ __all__ = [
     "__version__",
     "helmert_Q", "projectors", "static_game_from_series", "var_information_sharing_game",
     "estimate_A_from_series", "find_ESS", "nmf_on_X",
+    "project_out_identities", "value_gradient_payoffs", "growth_payoffs", "info_gain_payoffs",
     "centering_projector", "canonicalize_payoff_operator", "replicator_field",
     "weighted_projectors", "var_information_sharing_game_seasonal",
     "estimate_A_from_series_weighted", "iaaft", "iaaft_matrix", "surrogate_ess_frequency",

@@ -1,83 +1,190 @@
 #!/usr/bin/env python
-import sys, re, os
+"""Validate committed notebooks for deterministic, offline CI execution."""
+
+from __future__ import annotations
+
+import csv
+import json
+import re
+import sys
 from pathlib import Path
-import nbformat as nbf
+from typing import Dict, List
+
 
 ROOT = Path(__file__).resolve().parents[1]
-NB_DIRS = [ROOT / "notebooks"]
+NB_DIR = ROOT / "notebooks"
+VALID_TAGS = {"fast", "slow", "skip"}
 
 CHECKS = {
-    "has_import_ts2eg": re.compile(r"^\s*(from\s+ts2eg\s+import|import\s+ts2eg)\b", re.M),
-    "has_seed_numpy": re.compile(r"\b(np\.random\.seed\(|np\.random\.default_rng\(\s*\d+\s*\))"),
+    "has_import_ts2eg": re.compile(
+        r"^\s*(?:from\s+ts2eg\s+import|from\s+ts2eg\.|import\s+ts2eg)\b",
+        re.MULTILINE,
+    ),
+    "has_seed_numpy": re.compile(
+        r"\b(?:np\.random\.seed\(|np\.random\.default_rng\(\s*\d+\s*\))"
+    ),
     "has_seed_python": re.compile(r"\brandom\.seed\("),
-    "uses_TS2EG_CI": re.compile(r"TS2EG_CI"),
+    "uses_ts2eg_ci": re.compile(r"\bTS2EG_CI\b"),
     "uses_lambda_param": re.compile(r"\blambda_\s*="),
     "uses_np_ptp_func": re.compile(r"\bnp\.ptp\s*\("),
-    "uses_attr_ptp": re.compile(r"\.ptp\s*\("),  # will greenlight if np.ptp also present in same cell
-    "internet_hints": re.compile(
-        r"\b(yfinance|pandas_datareader|requests|urllib|httpx|pd\.read_csv\(['\"]https?://)", re.I
+    "uses_attr_ptp": re.compile(r"\.ptp\s*\("),
+    "bootstrap_marker": re.compile(r"#\s*Bootstrap\b", re.IGNORECASE),
+    "network_import": re.compile(
+        r"^\s*(?:"
+        r"from\s+(?:aiohttp|ftplib|httpx|pandas_datareader|requests|socket|"
+        r"urllib|yfinance)(?:\.|\s)|"
+        r"import\s+[^\n#]*\b(?:aiohttp|ftplib|httpx|pandas_datareader|"
+        r"requests|socket|urllib|yfinance)\b)",
+        re.IGNORECASE | re.MULTILINE,
     ),
-    "bootstrap_marker": re.compile(r"(#\s*Bootstrap|\bbootstrap\b)", re.I),
+    "network_url": re.compile(r"(?:https?|ftp)://", re.IGNORECASE),
+    "network_shell": re.compile(
+        r"^\s*!\s*(?:curl|git\s+clone|pip\s+install|wget)\b|"
+        r"^\s*%\s*(?:conda|mamba|pip)\b",
+        re.IGNORECASE | re.MULTILINE,
+    ),
 }
 
-def audit_nb(path: Path):
-    nb = nbf.read(path, as_version=4)
-    code_cells = [c for c in nb.cells if c.get("cell_type") == "code"]
-    src_all = "\n".join(c.get("source", "") for c in code_cells)
 
-    def _ok(pattern, source):
-        return bool(pattern.search(source))
+def _matches(name: str, source: str) -> bool:
+    return bool(CHECKS[name].search(source))
 
-    # First non-empty code cell heuristics
-    first_code = next((c for c in code_cells if c.get("source", "").strip()), None)
-    first_has_bootstrap = False
-    if first_code:
-        first_has_bootstrap = _ok(CHECKS["bootstrap_marker"], first_code.get("source","")) or \
-                              ("tags" in first_code.get("metadata", {}) and \
-                               "bootstrap" in first_code["metadata"]["tags"])
 
-    # Attribute .ptp flagged only if there's no np.ptp in same cell
-    attr_ptp_bad = False
-    for c in code_cells:
-        s = c.get("source","")
-        if CHECKS["uses_attr_ptp"].search(s) and not CHECKS["uses_np_ptp_func"].search(s):
-            attr_ptp_bad = True
-            break
+def _cell_source(cell: Dict[str, object]) -> str:
+    source = cell.get("source", "")
+    if isinstance(source, list):
+        return "".join(str(part) for part in source)
+    return str(source)
 
-    md = nb.metadata if hasattr(nb, "metadata") else {}
-    tag = md.get("ts2eg_ci")  # fast|slow|skip
+
+def audit_notebook(path: Path) -> Dict[str, object]:
+    nb = json.loads(path.read_text(encoding="utf-8"))
+    code_cells = [
+        cell for cell in nb.get("cells", []) if cell.get("cell_type") == "code"
+    ]
+    source = "\n".join(_cell_source(cell) for cell in code_cells)
+
+    has_bootstrap = any(
+        "bootstrap" in ((cell.get("metadata", {}) or {}).get("tags") or [])
+        or _matches("bootstrap_marker", _cell_source(cell))
+        for cell in code_cells
+    )
+
+    attr_ptp_bad = any(
+        _matches("uses_attr_ptp", _cell_source(cell))
+        and not _matches("uses_np_ptp_func", _cell_source(cell))
+        for cell in code_cells
+    )
+
+    committed_outputs = sum(len(cell.get("outputs", [])) for cell in code_cells)
+    execution_counts = sum(
+        cell.get("execution_count") is not None for cell in code_cells
+    )
+    invalid_python_cells = []
+    for index, cell in enumerate(code_cells, start=1):
+        try:
+            compile(_cell_source(cell), f"{path.as_posix()}#code-cell-{index}", "exec")
+        except SyntaxError:
+            invalid_python_cells.append(index)
+    metadata = nb.get("metadata", {}) or {}
 
     return {
-        "file": str(path.relative_to(ROOT)),
-        "ci_tag": tag,
-        "import_ts2eg": _ok(CHECKS["has_import_ts2eg"], src_all),
-        "seed_numpy": _ok(CHECKS["has_seed_numpy"], src_all),
-        "seed_python": _ok(CHECKS["has_seed_python"], src_all),
-        "ts2eg_ci_env": _ok(CHECKS["uses_TS2EG_CI"], src_all),
-        "bootstrap_top": first_has_bootstrap,
-        "lambda_param": _ok(CHECKS["uses_lambda_param"], src_all),
-        "np_ptp_func": _ok(CHECKS["uses_np_ptp_func"], src_all),
+        "file": path.relative_to(ROOT).as_posix(),
+        "ci_tag": metadata.get("ts2eg_ci"),
+        "import_ts2eg": _matches("has_import_ts2eg", source),
+        "seed_numpy": _matches("has_seed_numpy", source),
+        "seed_python": _matches("has_seed_python", source),
+        "ts2eg_ci_env": _matches("uses_ts2eg_ci", source),
+        "bootstrap": has_bootstrap,
+        "lambda_param": _matches("uses_lambda_param", source),
+        "np_ptp_func": _matches("uses_np_ptp_func", source),
         "attr_ptp_bad": attr_ptp_bad,
-        "internet": _ok(CHECKS["internet_hints"], src_all),
+        "internet": any(
+            _matches(name, source)
+            for name in ("network_import", "network_url", "network_shell")
+        ),
+        "committed_outputs": committed_outputs,
+        "execution_counts": execution_counts,
+        "invalid_python_cells": invalid_python_cells,
     }
 
-def main():
-    nbs = []
-    for d in NB_DIRS:
-        if d.is_dir():
-            nbs.extend(sorted(d.rglob("*.ipynb")))
-    if not nbs:
-        print("No notebooks found.", file=sys.stderr)
-        sys.exit(2)
 
-    print("file,ci_tag,import_ts2eg,seed_numpy,seed_python,ts2eg_ci_env,bootstrap_top,"
-          "lambda_param,np_ptp_func,attr_ptp_bad,internet")
-    for p in nbs:
-        rep = audit_nb(p)
-        print(",".join(str(rep[k]) for k in [
-            "file","ci_tag","import_ts2eg","seed_numpy","seed_python","ts2eg_ci_env",
-            "bootstrap_top","lambda_param","np_ptp_func","attr_ptp_bad","internet"
-        ]))
+def validation_errors(report: Dict[str, object]) -> List[str]:
+    errors: List[str] = []
+    tag = report["ci_tag"]
+    if not isinstance(tag, str) or tag not in VALID_TAGS:
+        errors.append(f"metadata.ts2eg_ci must be one of {sorted(VALID_TAGS)}")
+
+    if report["internet"]:
+        errors.append("contains a network import, URL, or package/download command")
+    if report["lambda_param"]:
+        errors.append("uses retired lambda_= keyword")
+    if report["attr_ptp_bad"]:
+        errors.append("uses ndarray.ptp instead of np.ptp")
+    if report["committed_outputs"] or report["execution_counts"]:
+        errors.append("contains committed execution counts or outputs")
+    if report["invalid_python_cells"]:
+        errors.append(
+            "contains non-Python code, an IPython magic, or a syntax error in "
+            f"code cells {report['invalid_python_cells']}"
+        )
+
+    if tag == "fast":
+        required = {
+            "import_ts2eg": "does not import ts2eg",
+            "seed_numpy": "does not set a deterministic NumPy seed",
+            "seed_python": "does not set a deterministic Python seed",
+            "ts2eg_ci_env": "does not honor TS2EG_CI",
+            "bootstrap": "does not contain a tagged or labeled bootstrap cell",
+        }
+        for field, message in required.items():
+            if not report[field]:
+                errors.append(message)
+    return errors
+
+
+def main() -> int:
+    notebook_paths = sorted(NB_DIR.glob("*.ipynb"))
+    if not notebook_paths:
+        print("No notebooks found.", file=sys.stderr)
+        return 2
+
+    reports = [audit_notebook(path) for path in notebook_paths]
+    fields = [
+        "file",
+        "ci_tag",
+        "import_ts2eg",
+        "seed_numpy",
+        "seed_python",
+        "ts2eg_ci_env",
+        "bootstrap",
+        "lambda_param",
+        "np_ptp_func",
+        "attr_ptp_bad",
+        "internet",
+        "committed_outputs",
+        "execution_counts",
+        "invalid_python_cells",
+    ]
+    writer = csv.DictWriter(sys.stdout, fieldnames=fields, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows({field: report[field] for field in fields} for report in reports)
+
+    failures = []
+    for report in reports:
+        errors = validation_errors(report)
+        if errors:
+            failures.append((report["file"], errors))
+    if failures:
+        print("Notebook audit failed:", file=sys.stderr)
+        for path, errors in failures:
+            for error in errors:
+                print(f"  {path}: {error}", file=sys.stderr)
+        return 1
+
+    print(f"Notebook audit passed ({len(reports)} notebooks checked).", file=sys.stderr)
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

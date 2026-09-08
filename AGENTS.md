@@ -3,8 +3,11 @@
 ## Purpose
 
 `ts2eg` is research software for mapping time-indexed observations to explicitly
-specified evolutionary-game objects. Correct identification and calibrated
-validation take precedence over preserving an attractive pipeline narrative.
+specified evolutionary-game objects. Its current legacy pipeline is
+scientifically flawed as a detector and has no validated detection capability.
+The observed-mixture motion-estimator repair is specified but not implemented.
+Correct identification and calibrated validation take precedence over preserving
+an attractive pipeline narrative.
 
 ## Read before changing code
 
@@ -12,6 +15,7 @@ validation take precedence over preserving an attractive pipeline narrative.
 2. `docs/design/STATISTICAL_CONTRACT.md`
 3. `docs/design/VALIDATION_MATRIX.md`
 4. The active plan in `docs/exec-plans/TS2EG_V2_REDESIGN.md`
+5. `docs/REPOSITORY_POLICY.md`
 
 Treat those files as the source of truth. Keep this file short; put detailed
 mathematics and decisions in the referenced documents.
@@ -38,8 +42,9 @@ mathematics and decisions in the referenced documents.
   1. observed mixtures: `x(t)` is supplied;
   2. known basis: a fixed observation model is supplied and mixtures are inferred;
   3. latent basis: loadings, mixtures, and dynamics are estimated jointly.
-- Only the observed-mixture mode may be treated as inferentially stable until the
-  later modes pass the validation ladder.
+- Observed-mixture mode is the first mode eligible for inferential support, but
+  only after it is implemented and passes its validation gates. The current
+  package does not yet implement that repair.
 - Fit preprocessing transforms and latent bases on training data only. Apply the
   frozen transform and basis to validation/test data.
 - If model selection is used, repeat the complete selection rule inside every
@@ -77,8 +82,14 @@ Run from the repository root:
 ```bash
 python -m pip install -e .
 pytest -q
+python -m pip install -r requirements-notebooks.txt
+python scripts/check_tracked_artifacts.py
+python scripts/audit_notebooks.py
 MPLBACKEND=Agg TS2EG_CI=1 python scripts/run_notebooks.py --tag fast --timeout 120
 ```
+
+The notebook runner executes committed source cells directly. Fix a broken
+notebook in the notebook itself; do not add CI-time source injection or mutation.
 
 For changes affecting inference or simulation, also run the relevant commands in
 `docs/design/VALIDATION_MATRIX.md`. Report exactly what was run and any failures.

@@ -3,8 +3,11 @@
 ## Status
 
 Milestone 1 completed at commit `77568de` (`fix payoff operator canonicalization`).
-Milestone 2 is active. Execute one milestone per pull request and do not skip
-validation gates.
+Milestone 2 core completed at commit `1d65179c` (`fix ESS certification and
+stability diagnostics`). The Milestone-2 repository closeout is completed by
+the commit containing this status update. Milestone 3 is next and has not
+started. Its motion-estimator repair is specified below but is not implemented.
+Execute one milestone per pull request and do not skip validation gates.
 
 ## Milestone 1: lock the geometry
 

@@ -24,30 +24,43 @@ Mathematical Background and Construction}}
 \begin{document}
 \maketitle
 
-\section{Overview}
-This note collects the mathematics underlying the \emph{timeseries-to-egt} pipeline. The procedure
+\section{Scope and status}
+This note describes the mathematics of the current legacy descriptive
+\emph{timeseries-to-egt} payoff-field path. As an empirical detection pipeline,
+this path is scientifically flawed and has no validated detection capability.
+Its motion-estimator repair is specified in the v2 design documents but is not
+implemented. The path is retained as compatibility code. The procedure
 \begin{enumerate}[leftmargin=*]
-    \item constructs per-time \emph{payoff vectors} $v(t)\in\R^N$ from an $N\times T$ multivariate time series $X$,
-    \item decomposes $v(t)$ into \emph{common-interest} and \emph{zero-sum} parts via orthogonal projections,
-    \item maps player space to a $k$-strategy space using a data-driven dictionary $S\in\R^{N\times k}$ and mixtures $x(t)\in\Delta_k$,
-    \item estimates a strategy-level operator $A\in\R^{k\times k}$ compatible with replicator dynamics, and
+    \item constructs profile-indexed payoff values or accepts a per-time \emph{payoff field} $v(t)\in\R^N$ associated with an $N\times T$ multivariate time series $X$,
+    \item decomposes $v(t)$ into aggregate and mean-zero relative parts,
+    \item builds an exploratory reconstruction dictionary $S\in\R^{N\times k}$ and separately re-infers simplex coefficients $x(t)\in\Delta_k$,
+    \item fits a contemporaneous strategy-level payoff-field coefficient matrix, and
     \item reports descriptive Nash, ESS-certificate, and local-stability diagnostics for the fitted operator.
 \end{enumerate}
-Nash and ESS results are descriptive properties of a fitted operator. The former surrogate ESS-frequency procedure is uncalibrated and deprecated; it must not be used as a p-value or hypothesis test. This milestone introduces no replacement inferential test.
+The current operator fit does not use mixture derivatives or centered log-ratio
+motion. It therefore does not estimate the operator generating mixture motion or
+establish that replicator dynamics generated the observations. NMF minimizes
+reconstruction error; it does not in general select replicator coordinates. The
+legacy estimator also discards the aggregate payoff channel.
+
+Nash and ESS results are descriptive properties of a fitted operator. The former
+surrogate ESS-frequency procedure is uncalibrated and deprecated; it must not be
+used as a p-value or hypothesis test. This milestone introduces no replacement
+inferential test.
 
 \section{Notation}
 \begin{itemize}[leftmargin=*]
 \item $X=[X_{\cdot,1}\;\cdots\;X_{\cdot,T}] \in \R^{N\times T}$: $N$ player signals over $T$ times.
 \item $\one=(1,\dots,1)^\top\in\R^N$.
 \item $\Delta_k = \{x\in\R^k_{\ge 0}:\;\one^\top x = 1\}$: simplex.
-\item $M_I, M_Z$: common-interest and zero-sum projectors in player space.
-\item $M^{(k)}_Z$: zero-sum projector in strategy space.
-\item $S\in\R^{N\times k}$: strategy archetypes (columns).
-\item $x(t)\in\Delta_k$: mixture at time $t$; $X_k = [x(1)\,\cdots\,x(T)]\in\R^{k\times T}$.
+\item $M_I, M_Z$: aggregate and relative-centering projectors in player space.
+\item $M^{(k)}_Z$: centering projector in strategy space.
+\item $S\in\R^{N\times k}$: reconstruction loadings (columns).
+\item $x(t)\in\Delta_k$: re-inferred simplex coefficient at time $t$; $X_k = [x(1)\,\cdots\,x(T)]\in\R^{k\times T}$.
 \item $g(t)\in\R^k$: strategy-level signal at time $t$; $G=[g(1)\,\cdots\,g(T)]$.
 \end{itemize}
 
-\section{Common-interest and Zero-sum Subspaces}
+\section{Aggregate and Relative Subspaces}
 \subsection{Unweighted projectors}
 Let $\bar v = \tfrac{1}{N}\one^\top v$ denote the arithmetic mean. Define
 \begin{equation}
@@ -55,7 +68,13 @@ Let $\bar v = \tfrac{1}{N}\one^\top v$ denote the arithmetic mean. Define
 M_I \;=\; \frac{1}{N}\,\one\one^\top,\qquad
 M_Z \;=\; I - M_I.
 \end{equation}
-For any $v\in\R^N$, $v_I=M_Iv=\bar v\,\one$ is the \emph{common-interest} component and $v_Z=M_Zv=v-\bar v\,\one$ is the \emph{zero-sum} (mean-centered) component. Both $M_I$ and $M_Z$ are symmetric idempotent matrices and satisfy $M_I M_Z=0$, with $\operatorname{im}(M_I)=\operatorname{span}\{\one\}$ and $\operatorname{im}(M_Z)=\{\one\}^\perp$.
+For any $v\in\R^N$, $v_I=M_Iv=\bar v\,\one$ is the aggregate
+(common-mode) component and $v_Z=M_Zv=v-\bar v\,\one$ is the mean-zero
+relative component. Thus $v=\bar v\,\one+v_Z$. A mean-zero payoff vector does
+not by itself establish a zero-sum or constant-sum strategic interaction. Both
+$M_I$ and $M_Z$ are symmetric idempotent matrices and satisfy $M_I M_Z=0$,
+with $\operatorname{im}(M_I)=\operatorname{span}\{\one\}$ and
+$\operatorname{im}(M_Z)=\{\one\}^\perp$.
 
 \subsection{Weighted projectors}
 Let $w\in\R^N_{>0}$ and $D_w=\mathrm{diag}(w)$; define the weighted inner product $\langle u,v\rangle_w = u^\top D_w v$. The orthogonal projector onto $\operatorname{span}\{\one\}$ \emph{with respect to} $\langle\cdot,\cdot\rangle_w$ is
@@ -64,7 +83,7 @@ Let $w\in\R^N_{>0}$ and $D_w=\mathrm{diag}(w)$; define the weighted inner produc
 M_I^{(w)} \;=\; \one\,\pi_w^\top,\qquad
 \pi_w^\top \;=\; \frac{\one^\top D_w}{\one^\top D_w \one} \;=\; \frac{w^\top}{\sum_i w_i},
 \end{equation}
-so that $M_I^{(w)} v = (\pi_w^\top v)\,\one$ equals the vector with each entry the $w$-weighted mean of $v$. The weighted zero-sum projector is $M_Z^{(w)} = I - M_I^{(w)}$. One checks $D_w M_I^{(w)}=(M_I^{(w)})^\top D_w$ and likewise for $M_Z^{(w)}$, i.e., self-adjointness under $\langle\cdot,\cdot\rangle_w$.
+so that $M_I^{(w)} v = (\pi_w^\top v)\,\one$ equals the vector with each entry the $w$-weighted mean of $v$. The weighted relative-centering projector is $M_Z^{(w)} = I - M_I^{(w)}$, and $\pi_w^\top M_Z^{(w)}v=0$. One checks $D_w M_I^{(w)}=(M_I^{(w)})^\top D_w$ and likewise for $M_Z^{(w)}$, i.e., self-adjointness under $\langle\cdot,\cdot\rangle_w$.
 
 \subsection{Explicit Helmert (contrast) basis}
 A particularly convenient orthonormal change of variables is the \emph{Helmert} matrix $Q\in\R^{N\times N}$:
@@ -113,13 +132,17 @@ v_I \;=\; \frac{p_1+p_2+p_3}{3}\,\one,\qquad
 v_Z \;=\; v - v_I.
 \end{align}
 
-\section{From Time Series to Payoffs}
+\section{Payoff Constructions}
 \subsection{Static (profile) game}
 Let $Z=M_Z X$ (or $M_Z^{(w)}X$). Discretize each row of $Z$ into $b$ bins to form a joint \emph{profile} $a(t)\in\{1,\dots,b\}^N$. For each profile $a$, define a payoff vector
 \begin{equation}
 v(a) \;=\; \E\!\big[X_{\cdot,t+1}\mid a(t)=a\big],
 \end{equation}
-estimated empirically. At time $t$ set $v(t)=v\!\big(a(t)\big)$ and take $v_Z(t)=M_Z v(t)$ (or weighted).
+estimated empirically. The implementation returns dictionaries indexed by the
+profiles observed in the fitting sample, with aggregate and relative components
+stored separately. It does not itself return a time-indexed payoff array; a
+caller must explicitly map profiles back to times before using this construction
+with the legacy operator estimator.
 
 \subsection{Information-sharing (VAR) game}
 For each player $i$, consider two linear predictors of $X_{i,t}$ from past lags up to order $p$:
@@ -127,30 +150,65 @@ For each player $i$, consider two linear predictors of $X_{i,t}$ from past lags 
 \text{Self model: }\quad & \hat X_{i,t} = \sum_{\ell=1}^p \alpha_{i,\ell} X_{i,t-\ell} + u_{i,t},\\
 \text{Full model: }\quad & \hat X_{i,t} = \sum_{j=1}^N \sum_{\ell=1}^p \beta_{i,j,\ell} X_{j,t-\ell} \;+\; \sum_{m\in\mathcal{S}} \gamma_{i,m} s_m(t) \;+\; e_{i,t},
 \end{align}
-where $s_m(t)$ are optional seasonal regressors (e.g., $\sin/\cos$ at multiples of a base period). Let $\sigma^2_{i,\mathrm{self}}=\E[u_{i,t}^2]$ and $\sigma^2_{i,\mathrm{full}}=\E[e_{i,t}^2]$. Define the \emph{information-sharing payoff} for player $i$ as the reduction in mean squared error
+where $s_m(t)$ are optional seasonal regressors (e.g., $\sin/\cos$ at multiples of a base period). Let $\widehat\sigma^2_{i,\mathrm{self}}$ and $\widehat\sigma^2_{i,\mathrm{full}}$ be residual mean squared errors evaluated on the same observations used for fitting. Define the descriptive predictive gain for player $i$ as
 \begin{equation}
-v_i \;:=\; \sigma^2_{i,\mathrm{self}} - \sigma^2_{i,\mathrm{full}} \quad (\text{optionally normalized}).
+v_i \;:=\; \widehat\sigma^2_{i,\mathrm{self}} - \widehat\sigma^2_{i,\mathrm{full}}.
 \end{equation}
-Finally set $v_Z = M_Z v$ (or $M_Z^{(w)}v$).
+For every sharing profile the implementation returns $v_I=M_Iv$ and
+$v_Z=M_Zv$ separately. Its compatibility field is
+$v_Z+\lambda_{\mathrm{common}}v_I$, so it is mean-zero only when
+$\lambda_{\mathrm{common}}=0$. These are in-sample predictive associations, not
+causal effects, and they are profile-indexed rather than time-indexed.
 
-\section{Strategies and Mixtures}
-Let $S=[s_1\,\cdots\,s_k]\in\R^{N\times k}$ be a strategy dictionary (e.g.\ via nonnegative matrix factorization). For each time $t$, infer $x(t)\in\Delta_k$ by projecting the observed signal onto the cone spanned by $S$ with a simplex constraint, e.g.
+\section{Reconstruction Basis and Legacy Mixtures}
+Nonnegative matrix factorization returns $X\approx SH$, but reconstruction
+quality does not validate either factor as a replicator coordinate system. The
+legacy estimator ignores the returned $H$, copies $S$, normalizes every column
+of $S$ to unit Euclidean norm, and independently infers $x(t)\in\Delta_k$ by
 \begin{equation}
-x(t)\;\in\;\argmin_{x\in\Delta_k}\;\|X_{\cdot,t}-Sx\|_2^2\quad (\text{optionally with nonnegativity on }S).
+x(t)\;\in\;\argmin_{x\in\Delta_k}\;\|X_{\cdot,t}-Sx\|_2^2
 \end{equation}
-Define the strategy-level signal $g(t)=S^\top v_Z(t)$ and collect $X_k=[x(1)\,\cdots\,x(T)]\in\R^{k\times T}$, $G=[g(1)\,\cdots\,g(T)]\in\R^{k\times T}$.
+using 200 projected-gradient iterations. This is a projection onto the convex
+hull of the normalized columns, not the full nonnegative cone; there is no
+separate amplitude parameter. Consequently $X$ must use the same scale as the
+data on which $S$ was fitted. Define $g(t)=S^\top v_Z(t)$ and collect
+$X_k=[x(1)\,\cdots\,x(T)]\in\R^{k\times T}$ and
+$G=[g(1)\,\cdots\,g(T)]\in\R^{k\times T}$.
 
-\section{Replicator-compatible Operator}
+\section{Legacy Contemporaneous Payoff-Field Operator}
 Let $M_Z^{(k)}=I_k-\tfrac{1}{k}\one\one^\top$ be the strategy-space centering matrix. We first fit $A_{\mathrm{raw}}\in\R^{k\times k}$ via ridge regression:
-\begin{equation}
+\begin{align}
 \label{eq:ridge-A}
-\min_{A_{\mathrm{raw}}} \;\big\|M_Z^{(k)}G - A_{\mathrm{raw}} X_k\big\|_F^2 + \lambda\|A_{\mathrm{raw}}\|_F^2
-\qquad\Longrightarrow\qquad
-A_{\mathrm{raw}} \;=\; \big(M_Z^{(k)}G\big)X_k^\top\;\big(X_k X_k^\top + \lambda I\big)^{-1}.
+\min_{A_{\mathrm{raw}}}\quad
+&\big\|M_Z^{(k)}G-A_{\mathrm{raw}}X_k\big\|_F^2
+  +\rho\|A_{\mathrm{raw}}\|_F^2,\\
+A_{\mathrm{raw}}
+&=\big(M_Z^{(k)}G\big)X_k^\top
+  \big(X_kX_k^\top+\rho I\big)^{-1},
+  \qquad \rho=\texttt{ridge}.
+\end{align}
+Replicator dynamics are invariant under $A\mapsto A+\one c^\top$. The public
+compatibility key \texttt{A} therefore contains the canonical representative
+$B=M_Z^{(k)}A_{\mathrm{raw}}$, which satisfies $\one^\top B=0$; the raw
+coefficient is also returned. Multiplication on the right by $M_Z^{(k)}$ is not
+an identification normalization: it imposes $A\one=0$ and changes the
+replicator vector field in general.
+
+This is the contemporaneous regression $M_Z^{(k)}G\approx BX_k$. It does not use
+$\dot x$, finite differences, or centered log-ratio motion and therefore is not
+an estimator of the operator generating mixture motion. The compatibility score
+is the in-sample zero-field coefficient
+\begin{equation}
+R^2_{\mathrm{in}}=1-
+\frac{\|M_Z^{(k)}G-BX_k\|_F^2}{\|M_Z^{(k)}G\|_F^2}.
 \end{equation}
-Replicator dynamics are invariant under $A\mapsto A+\one c^\top$. We therefore return the canonical representative $A=M_Z^{(k)}A_{\mathrm{raw}}$, which satisfies $\one^\top A=0$. Multiplication on the right by $M_Z^{(k)}$ is not an identification normalization: it imposes $A\one=0$ and changes the replicator vector field in general.
+The API also returns the numerator and denominator as \texttt{ss\_res} and
+\texttt{ss\_tot}. It returns \texttt{NaN} when the denominator is zero. No
+held-out score is computed.
 
 \section{Replicator Dynamics, Jacobian, Nash, and ESS}
+Here $A$ denotes any supplied payoff matrix, including the fitted compatibility
+matrix returned under the key \texttt{A} (denoted $B$ above).
 The continuous-time replicator dynamics on $\Delta_k$ are
 \begin{equation}
 \dot x_i \;=\; x_i \Big((Ax)_i - \bar f(x)\Big),\qquad \bar f(x)=x^\top A x,\quad i=1,\dots,k.
@@ -173,7 +231,9 @@ T_J=\{y\in\R^{|J|}:\one^\top y=0\}.
 \)
 For a pure support, $Q$ has shape $1\times0$ and the within-support condition is vacuous.
 \begin{proposition}[ESS certificate used by \texttt{find\_ESS}]
-If every unused pure strategy is strictly worse against $x^\star$ and every eigenvalue of $Q^\top A_sQ$ is strictly negative, then the routine reports \texttt{ess\_status=``certified''}.
+If every unused pure strategy is strictly worse against $x^\star$ and every
+eigenvalue of $Q^\top A_sQ$ is strictly negative, the routine reports the status
+\texttt{certified}.
 \end{proposition}
 If the tangent condition fails, the status is \texttt{rejected}. If the tangent condition passes but an unused pure strategy ties, the simple certificate is incomplete and the status is \texttt{undetermined}. The compatibility field \texttt{is\_ess} is true exactly for certified records; a false value is not a complete non-ESS decision in the undetermined case.
 
@@ -181,14 +241,18 @@ Local dynamic stability is reported separately. The Jacobian is restricted with 
 \begin{equation}
 \lambda_\ell=(Ax^\star)_\ell-x^{\star\top}Ax^\star,\qquad \ell\notin J.
 \end{equation}
-Strictly negative real parts certify local asymptotic stability and a positive real part certifies instability. Zero-real-part modes are non-hyperbolic, so the linear diagnostic is reported as \texttt{undetermined}. No Jacobian flag is used as an ESS or significance test.
+Strictly negative real parts certify local asymptotic stability and a positive real part certifies instability. Zero-real-part modes are non-hyperbolic, so the linear diagnostic is reported as \texttt{undetermined}. No Jacobian flag is used as an ESS or significance test. The support enumerator solves a nonsingular KKT system for each candidate and skips singular systems; it can therefore omit equilibrium continua and some degenerate candidates. None of these matrix diagnostics detects a property of the observed time-series-generating process.
 
 \section{Seasonal VAR Details}
 Let $S(t)$ collect seasonal regressors such as $\{\sin(2\pi m t/P),\cos(2\pi m t/P)\}_{m\in \mathcal{M}}$. For player $i$ the full regression is
 \begin{equation}
 X_{i,t} \;=\; \sum_{j=1}^N \sum_{\ell=1}^p \beta_{i,j,\ell} X_{j,t-\ell} \;+\; \gamma_i^\top S(t) \;+\; e_{i,t},
 \end{equation}
-with ridge penalty on $\beta,\gamma$. The information-sharing payoff $v_i$ is computed from the MSE reduction relative to the self-only regression. Center $v$ across players with $M_Z$ (or $M_Z^{(w)}$). See \cite{lutkepohl} for VAR practice.
+with ridge regularization. The reported profile payoff is the in-sample MSE
+reduction relative to the self-only regression. Centering this quantity across
+players does not turn it into a calibrated measure of information flow or
+strategic interaction. See \cite{lutkepohl} for general VAR background, not for
+validation of this construction.
 
 \section{Legacy IAAFT Surrogate Diagnostic}
 The compatibility routine \texttt{surrogate\_ess\_frequency} generates row-wise IAAFT surrogates and records how often fitted surrogate operators contain an ESS-certified record:
@@ -197,32 +261,32 @@ The compatibility routine \texttt{surrogate\_ess\_frequency} generates row-wise 
 \item For each surrogate dataset, recompute payoffs, re-estimate $A$ via \eqref{eq:ridge-A}, and tally the descriptive ESS-certificate status.
 \end{itemize}
 This frequency is uncalibrated, deprecated, and is not a p-value, hypothesis test, or significance measure. No replacement inferential test is introduced in this milestone. IAAFT alternates phase randomization in the Fourier domain (matching the original magnitudes) with rank-order remapping to the original amplitudes until convergence \cite{schreiber-schmitz}.
+In particular, the routine has no validated detection interpretation.
 
 \section{Edge Cases and Identifiability}
 \begin{itemize}[leftmargin=*]
-\item If $X_{\cdot,t}=c_t\,\one$ (pure common mode), then $v_Z\equiv 0$ and the EGT signal is null by design.
+\item If $v(t)=c_t\one$, then $v_Z(t)=0$. The legacy regression target is zero, its fitted canonical coefficient is zero, and its in-sample $R^2$ is undefined rather than evidence of a perfect fit.
 \item Replicator dynamics are invariant under $A\mapsto A+\one c^\top$; left canonicalization $A\mapsto M_Z^{(k)}A$ selects a representative of this equivalence class.
-\item Choice of $S$ matters; NMF/archetypes produce parts-based, interpretable strategies. PCA is acceptable but mixes signs; rectification may be used.
+\item The weighted compatibility estimator requires every supplied player weight to be strictly positive. Zero and negative weights are rejected.
+\item NMF factors are scale- and permutation-ambiguous and can vary across fits. A parts-based reconstruction is not automatically an interpretable strategy system, and post-hoc rectification of another basis is not validated here.
 \end{itemize}
 
-\section{Relation to Jessie \& Saari's Coordinate Systems}
-Jessie and Saari advocate analyzing \emph{classes} of games by decomposing each game into coordinates that separate individual incentives (\emph{``Nash''}), group/behavioral components, and kernel (payoff inflation/deflation), yielding a uniform methodology across formats \cite{jessie-saari}. In their words, a coordinate system ``explicitly separates each payoff into contributions being made to each feature,'' replacing ad hoc analysis with a systematic decomposition.\\[4pt]
-\emph{How ts2eg differs.} Our construction is \textbf{time-series first}. Rather than starting from a static payoff table and decomposing it, we:
-\begin{enumerate}[leftmargin=*]
-\item derive per-time payoff vectors from multivariate signals (static or predictive-gain definitions);
-\item isolate common-interest vs.\ zero-sum directions \emph{in player space} via ANOVA/Helmert at each time;
-\item map payoffs to a learned strategy dictionary $S$ to obtain strategy-level signals; and
-\item estimate a replicator-compatible operator $A$ by ridge and report descriptive equilibrium diagnostics.
-\end{enumerate}
-Thus, while philosophically aligned with ``coordinate systems for games,'' ts2eg couples signal processing (VAR with seasonal regressors; IAAFT) and evolutionary dynamics through an explicit change of variables in player space.
+\section{Relation to Static Game Coordinate Systems}
+Coordinate decompositions of already specified games separate payoff components
+within a known game \cite{jessie-saari}. The legacy \texttt{ts2eg} path instead
+starts from user-defined or fitted payoff quantities, applies a player-space
+aggregate/relative decomposition, maps them through a reconstruction basis, and
+fits a contemporaneous coefficient matrix. Those operations do not establish
+that the result is the game governing the observations. Similar vocabulary does
+not supply the missing identification or detection argument.
 
 \section{Algorithms (summary)}
 \begin{enumerate}[leftmargin=*]
 \item Compute $M_I$/$M_Z$ (or weighted) and optionally a (weighted) Helmert basis using \eqref{eq:helmert-q1}–\eqref{eq:helmert-qk}.
-\item Build per-time payoffs $v(t)$ via static profiles or information-sharing; take $v_Z(t)=M_Z v(t)$.
-\item Learn strategies $S$ and mixtures $x(t)\in\Delta_k$.
-\item Form $g(t)=S^\top v_Z(t)$ and fit $A_{\mathrm{raw}}$ by ridge: $A_{\mathrm{raw}}=(M_Z^{(k)}G)X_k^\top(X_kX_k^\top+\lambda I)^{-1}$; return $A=M_Z^{(k)}A_{\mathrm{raw}}$ so that $\one^\top A=0$.
-\item Enumerate supports to find mixed Nash equilibria; report the symmetric-part ESS certificate and local dynamic eigenvalues separately.
+\item Construct or supply a time-indexed payoff field $v(t)$ and retain $v_Z(t)=M_Zv(t)$; profile-based builders require an explicit profile-to-time mapping by the caller.
+\item Optionally fit a reconstruction $X\approx SH$. The estimator ignores $H$, normalizes $S$, and re-infers simplex coefficients $x(t)$ from $X$.
+\item Form $g(t)=S^\top v_Z(t)$ and fit $A_{\mathrm{raw}}$ by ridge: $A_{\mathrm{raw}}=(M_Z^{(k)}G)X_k^\top(X_kX_k^\top+\rho I)^{-1}$; return $B=M_Z^{(k)}A_{\mathrm{raw}}$ so that $\one^\top B=0$.
+\item Enumerate nonsingular support systems for the fitted $B$ and report matrix-level Nash, ESS-certificate, and local linearization summaries. These do not detect corresponding properties in the observations.
 \item If required for compatibility, report the deprecated IAAFT ESS frequency as an uncalibrated descriptive diagnostic only.
 \end{enumerate}
 
@@ -230,13 +294,13 @@ Thus, while philosophically aligned with ``coordinate systems for games,'' ts2eg
 \begin{center}
 \begin{tabular}{ll}
 $X\in\R^{N\times T}$ & player signals (rows = players, cols = time) \\
-$M_I, M_Z$ & common-interest and zero-sum projectors \\
+$M_I, M_Z$ & aggregate and relative-centering projectors \\
 $M_I^{(w)}, M_Z^{(w)}$ & weighted projectors (inner product $\langle\cdot,\cdot\rangle_w$) \\
 $Q$ & (weighted) Helmert matrix (orthonormal change of basis) \\
-$S\in\R^{N\times k}$ & strategy archetypes (columns) \\
-$x(t)\in\Delta_k$ & mixture on the simplex at time $t$ \\
+$S\in\R^{N\times k}$ & normalized reconstruction loadings used by the legacy fit \\
+$x(t)\in\Delta_k$ & re-inferred simplex coefficient at time $t$ \\
 $g(t)=S^\top v_Z(t)$ & strategy-level signal \\
-$A\in\R^{k\times k}$ & replicator-compatible operator \\
+$B\in\R^{k\times k}$ & left-canonical contemporaneous payoff-field coefficient \\
 \end{tabular}
 \end{center}
 

@@ -1,348 +1,263 @@
-# timeseries-to-egt (ts2eg): From Multivariate Time Series to Evolutionary Games
+# timeseries-to-egt (`ts2eg`)
 
 [![CI](https://github.com/flengyel/timeseries-to-egt/actions/workflows/ci.yml/badge.svg)](https://github.com/flengyel/timeseries-to-egt/actions/workflows/ci.yml)
 
-<!-- ts2eg-intro-exact-start -->
-## Introduction
+`ts2eg` currently provides geometry utilities, payoff constructors, a legacy
+payoff-field fit, and matrix-level equilibrium diagnostics for multivariate time
+series. The legacy pipeline is scientifically flawed as an empirical detector:
+it has no validated capability to detect dynamics, interaction, regimes, cycles,
+ESS in observations, or domain effects. Its repair is specified in the v2 design
+documents but the motion estimator is not implemented. The current package also
+supplies no calibrated hypothesis test for strategic interaction or any domain
+application.
 
-`ts2eg` maps a multivariate time series $X\in\mathbb{R}^{N\times T}$ to explicitly specified payoff fields, fitted evolutionary-game operators, and descriptive equilibrium diagnostics.
+## Scientific status
 
-* The pipeline separates the **common-interest component** ($M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top$) from the relative-payoff component ($M_Z=I_N-M_I$).
-* The current operator estimator is a payoff-field regression. Its Nash, ESS, and local-stability outputs describe the fitted operator; they do not establish cross-player coupling or causal interaction.
+The present public path is retained for compatibility and exploration:
 
-> **Inferential status:** Nash and ESS results are descriptive properties of a fitted operator. The former surrogate ESS-frequency procedure is uncalibrated, deprecated, and must not be used as a p-value or hypothesis test. This milestone introduces no replacement inferential test.
+| Stage | Operation | Current interpretation |
+| --- | --- | --- |
+| Player-space decomposition | Split a payoff vector into aggregate and mean-zero relative components | Exact linear decomposition |
+| Payoff construction | Static profiles, predictive MSE reductions, growth rates, or application-supplied values | Definition-dependent; predictive gains are associations |
+| Basis construction | Nonnegative matrix factorization | Reconstruction tool, not a validated selector of replicator coordinates |
+| Mixture re-inference | Project each observation onto the simplex against a normalized basis | Legacy convex-hull fit with no amplitude term |
+| Operator fit | Regress contemporaneous centered payoff signals on inferred mixtures | Descriptive payoff-field coefficient matrix, not a motion estimator |
+| Equilibria | Enumerate Nash candidates and report ESS and local-stability diagnostics | Properties of the fitted matrix only |
 
-See mathematical background: `docs/ts2eg_math_background.tex`.
+The deprecated `surrogate_ess_frequency` routine is uncalibrated. Its output is
+a legacy descriptive frequency, not a p-value, significance measure, or causal
+result. No replacement inferential procedure is available at this milestone.
 
-## Pipeline (end-to-end)
+## Aggregate and relative payoff channels
 
-| Stage                   | Input           | Core method                     | Output                                                   |
-| ----------------------- | --------------- | ------------------------------- | -------------------------------------------------------- |
-| 1. Signal isolation     | $X$             | Project with $M_Z$              | Zero-sum payoff signal $v_Z(t)$                          |
-| 2. Payoff induction     | $X$             | VAR information-sharing (ridge) | Per-time payoffs $v(t)$                                  |
-| 3. Strategy learning    | $X$             | Dictionary learning (NMF)       | $S\in\mathbb{R}^{N\times k}$, mixtures $x(t)\in\Delta_k$ |
-| 4. Game estimation      | $v_Z(t),\,x(t)$ | Centered ridge regression       | $A\in\mathbb{R}^{k\times k}$                          |
-| 5. Equilibrium analysis | $A$             | Nash checks and ESS certificate | Descriptive statuses and stability eigenvalues           |
-
-**Stage 1 (definition).** Define the mean and centering projectors in player space
+For a player-level payoff vector $v(t)\in\mathbb R^N$, define
 
 $$
-M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top,\qquad M_Z=I_N-M_I.
+\bar v(t)=\frac1N\mathbf 1^\top v(t),\qquad
+v^Z(t)=v(t)-\bar v(t)\mathbf 1.
 $$
 
-For any player-level vector $y\in\mathbb{R}^N$, decompose $y=y_I+y_Z$ with $y_Z=M_Z y$ and **retain only $y_Z$**. In practice we apply this to payoffs: once Stage 2 produces $v(t)$, set
+The aggregate channel $\bar v(t)\mathbf 1$ records common creation or
+destruction under the chosen payoff definition. The relative channel $v^Z(t)$
+records advantage relative to the player mean. A mean-zero vector alone does not
+define a zero-sum or constant-sum strategic game.
+
+The legacy operator estimators currently pass only $v^Z$ forward and discard
+the aggregate channel. They therefore cannot measure aggregate creation or
+destruction. Payoff builders that return `payoffs_I` and `payoffs_Z` expose both
+components before this legacy loss.
+
+For strictly positive weights $w$, the weighted projection uses
 
 $$
-v_Z(t)=M_Z\,v(t),
+\pi=\frac{w}{\sum_iw_i},\qquad
+M_I^{(w)}=\mathbf1\pi^\top,\qquad
+M_Z^{(w)}=I-M_I^{(w)}.
 $$
 
-and carry $v_Z(t)$ forward.
+## Payoff constructors
 
-**Weighted variant:** for $w\ge 0$ with $\sum_i w_i>0$, let $\pi=w/\sum_i w_i$ and use $M_I^{(w)}=\mathbf{1}\pi^\top,\; M_Z^{(w)}=I_N-\mathbf{1}\pi^\top$.
+- `static_game_from_series` returns profile-indexed conditional next-step
+  payoff vectors and their aggregate/relative decomposition.
+- `var_information_sharing_game` and its seasonal variant return
+  profile-indexed, in-sample predictive MSE reductions. These are predictive
+  associations. A separate, explicit profile-to-time mapping is required before
+  they can be supplied to an operator estimator.
+- `growth_payoffs` returns a per-time log-growth field.
+- `value_gradient_payoffs` fits one full-sample ridge coefficient vector and
+  repeats it over time. It is not a time-varying gradient.
+- `info_gain_payoffs` reports global or rolling in-sample leave-one-feature-out
+  MSE differences. It does not identify causal influence.
 
-**Note:** if $X_{\cdot,t}=c_t\,\mathbf{1}$ for all $t$, then $v_Z\equiv 0$ by construction.
+## Reconstruction coordinates and legacy mixtures
 
-**Stage 2 (definition).** For each player $i$, fit (i) a self-only AR($p$) model and (ii) a full VAR($p$) using all players (ridge-regularized). The information-sharing payoff is the **MSE reduction**  
-$\;\;v_i=\mathrm{MSE}_{\text{self}}-\mathrm{MSE}_{\text{full}}.$  
-Form $v(t)=(v_1,\dots,v_N)^\top$ and carry forward $v_Z(t)=M_Zv(t)$.
+`nmf_on_X(X, k)` returns a reconstruction $X\approx SH$. Reconstruction error
+does not establish that the columns of $S$ define coordinates in which the
+replicator equation holds.
 
-## Mathematical setup
+The current operator estimators do not use the returned $H$. They normalize
+the columns of $S$ and independently compute
 
-* **Projectors.** $M_I=\tfrac{1}{N}\mathbf{1}\mathbf{1}^\top,\; M_Z=I_N-M_I.$ Helmert $Q$ gives an orthonormal basis with $q_1\propto\mathbf{1}$.
-* **Weighted projectors.** For weights $w\in\mathbb{R}_{\ge0}^N$ with $\sum_i w_i>0$, define $\pi=w/\sum_i w_i$. Then
-  $$
-  M_I^{(w)}=\mathbf{1}\,\pi^\top,\qquad M_Z^{(w)}=I_N-\mathbf{1}\,\pi^\top.
-  $$
-* **Strategies.** Factor $X\approx S H$ (NMF) with $S\in\mathbb{R}^{N\times k}_{\ge0}$, $H\in\mathbb{R}^{k\times T}_{\ge0}$; define $x(t)$ as the $t$-th column of $H$ re-normalized to $\Delta_k$. Stack $X_k=[x(1)\,\cdots\,x(T)]\in\mathbb{R}^{k\times T}$.
-* **Signals.** Let $g(t)=S^\top v_Z(t)$ and stack $G=[g(1)\,\cdots\,g(T)]$. Center **only** the signals as $G_c=M_Z^{(k)}G$ with $M_Z^{(k)}=I_k-\tfrac{1}{k}\mathbf{1}\mathbf{1}^\top$. (Mixtures $x(t)$ are not centered; they live on $\Delta_k$.)
-* **Estimator.**
-  $$
-  C_{xx}=X_k X_k^\top,\quad C_{gx}=G_c X_k^\top,\quad
-  A_{\mathrm{raw}} = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\; \rho=\texttt{ridge},\quad
-  A=M_Z^{(k)}A_{\mathrm{raw}}.
-  $$
-  The estimator uses `np.linalg.solve` with `pinv` fallback. Payoff operators are equivalent under $A\sim A+\mathbf{1}c^\top$, so the public canonical operator satisfies $\mathbf{1}^\top A=\mathbf{0}$. It does not impose $A\mathbf{1}=\mathbf{0}$; right-centering changes the replicator field in general.
-* **Descriptive equilibria.** Replicator $\dot{x}_i=x_i\big((Ax)_i-x^\top A x\big)$. The function `find_ESS` checks Nash feasibility, reports an ESS certificate from the symmetric payoff part on an orthonormal tangent basis, and reports Jacobian-based local stability separately.
+$$
+x(t)\in\arg\min_{x\in\Delta_k}\|Sx-X_{\cdot,t}\|_2^2
+$$
 
-## Interpreting the results
+by projected gradient. This is a simplex-constrained convex-hull approximation,
+not a cone fit, and it contains no separate amplitude variable. Use the same
+preprocessing scale for basis fitting and mixture re-inference. A fitted,
+train-only preprocessing/measurement object is deferred to a later milestone.
 
-`ess_status="certified"` means the fitted operator passed the strict off-support and negative-tangent sufficient conditions implemented here. `ess_status="undetermined"` records an off-support tie for which the simple certificate is incomplete. Neither status is an inferential result about the data-generating process. Local dynamic stability is a separate linearization diagnostic and may also be undetermined in non-hyperbolic cases.
+## Legacy payoff-field operator
 
-## Numerical/robustness notes
+Let $G=S^\top v^Z$, $M_k=I_k-\mathbf1\mathbf1^\top/k$, and
+$G_c=M_kG$. The current estimator fits
 
-* Invariance to level shifts via $M_Z$.
-* Canonical operator $A$ satisfies $\mathbf{1}^\top A=0$; $A\mathbf{1}=0$ is not imposed.
-* Ridge regularization with pseudo-inverse fallback for near-singular $C_{xx}$.
-* Weighted variants guard against $\sum w=0$.
-* Reproducible examples (`--seed`) seed NumPy (and Python RNG where used); NumPy-2-compatible.
+$$
+A_{\rm raw}=G_cX_k^\top(X_kX_k^\top+\rho I_k)^{-1},\qquad
+B=M_kA_{\rm raw}.
+$$
 
-<!-- ts2eg-intro-exact-end -->
+The public compatibility key `A` contains $B$; `A_raw` contains the raw ridge
+coefficient. Left canonicalization is required because replicator dynamics
+identify payoff matrices under
 
-**Package:** `ts2eg` (src‑layout). Code: `src/ts2eg/core.py` and `src/ts2eg/extensions.py`.
+$$
+A\sim A+\mathbf1c^\top.
+$$
 
----
+The canonical representative satisfies $\mathbf1^\top B=0$. Right-centering
+is not an identification normalization and generally changes the replicator
+field.
+
+This fit uses contemporaneous payoff signals. It never estimates
+$\dot x$, finite differences, or centered log-ratio motion, so it does not show
+that replicator dynamics generated the observations.
+
+`R2` is retained as a compatibility key for the in-sample zero-field score
+
+$$
+R^2_{\rm in}=1-\frac{\|G_c-BX_k\|_F^2}{\|G_c\|_F^2}.
+$$
+
+The score is undefined when $G_c=0$, and the current API returns `nan` in that
+case. No held-out score is returned by this estimator.
+
+## Descriptive equilibrium diagnostics
+
+For a supplied payoff matrix, `find_ESS`:
+
+- enumerates supports and checks symmetric Nash inequalities;
+- reports `ess_status` as `certified`, `rejected`, or `undetermined` using the
+  symmetric payoff part on an orthonormal support tangent basis;
+- reports Jacobian tangent and transverse-invasion eigenvalues separately from
+  ESS certification.
+
+`is_ess` is a compatibility alias for `ess_status == "certified"`. A false value
+is inconclusive when the status is `undetermined`. Singular KKT systems are
+skipped, so continua of equilibria and some degenerate candidates may be absent
+from the returned list.
 
 ## Install
 
 ```bash
 python -m venv .venv
-# Linux/macOS:
-source .venv/bin/activate
-# Windows PowerShell:
-# .\.venv\Scripts\Activate.ps1
-
-pip install -r requirements.txt
-pip install -e .
+source .venv/bin/activate        # Linux/macOS
+# .\.venv\Scripts\Activate.ps1  # Windows PowerShell
+python -m pip install -e .
 ```
 
-Python $\ge$ 3.9 recommended. CI runs `pytest` on 3.9–3.12.
+Python 3.9 or later is required. CI runs the unit-test matrix on Python
+3.9–3.13 and runs the committed fast notebooks on Python 3.12.
 
----
+## Descriptive quick start
+
+This stipulated example uses the same share matrix for NMF and legacy mixture
+re-inference. It demonstrates software behavior; it does not validate latent
+replicator coordinates or operator recovery.
+
+```python
+import numpy as np
+import ts2eg
+
+rng = np.random.default_rng(7)
+counts = np.maximum(rng.lognormal(size=(5, 120)), 1e-8)
+X = counts / counts.sum(axis=0, keepdims=True)
+v = ts2eg.growth_payoffs(counts, dt=1.0)
+
+S, _ = ts2eg.nmf_on_X(X, k=3, iters=150, seed=7)
+fit = ts2eg.estimate_A_from_series(S, X, v, k=3, ridge=1e-2)
+
+records = ts2eg.find_ESS(fit["A"], max_support=3)
+print("In-sample payoff-field R2:", fit["R2"])
+print("Fitted-matrix ESS-certified supports:", [
+    r["support"] for r in records if r["ess_status"] == "certified"
+])
+```
+
+## Public API
+
+```text
+# geometry
+centering_projector(k)
+canonicalize_payoff_operator(A)
+replicator_field(A, x)
+helmert_Q(N)
+projectors(N)
+weighted_projectors(weights)
+
+# payoff construction
+static_game_from_series(...)
+var_information_sharing_game(...)
+var_information_sharing_game_seasonal(...)
+project_out_identities(...)
+value_gradient_payoffs(...)
+growth_payoffs(...)
+info_gain_payoffs(...)
+
+# legacy reconstruction/payoff-field path
+nmf_on_X(...)
+estimate_A_from_series(...)
+estimate_A_from_series_weighted(...)
+
+# descriptive equilibria and deprecated compatibility
+find_ESS(...)
+surrogate_ess_frequency(...)
+```
+
+The regularization keyword is `ridge`. The pre-v0.1.1 `lambda_` spelling is not
+accepted.
 
 ## Repository layout
 
 ```text
-.
-├── pyproject.toml
-├── README.md
-├── requirements.txt
-├── .github/workflows/ci.yml
-├── src/
-│   └── ts2eg/
-│       ├── __init__.py
-│       ├── core.py          # canonical pipeline
-│       └── extensions.py    # weighted projectors, seasonal VAR, IAAFT harness
-├── tests/
-│   ├── test_projectors.py
-│   ├── test_seasonal_var.py
-│   ├── test_extensions_egt.py
-│   └── test_package_import.py
-├── notebooks/               # curated demos (each has a bootstrap cell)
-├── docs/                    # domain notes (FINANCE.md, BIOLOGY.md, etc.)
-└── examples/
-    └── demo_var_game.py     # runnable end‑to‑end example
+src/ts2eg/
+  geometry.py       payoff equivalence and replicator-field geometry
+  core.py           payoff builders and the legacy descriptive path
+  extensions.py     weighted variants, seasonal VAR, deprecated IAAFT harness
+tests/
+  test_geometry.py
+  test_equilibria.py
+  test_documentation_contract.py
+  test_repository_hygiene.py
+notebooks/           synthetic, output-free descriptive demonstrations
+docs/               mathematical background, design contracts, domain notes
+scripts/             notebook audit, direct execution, and repository checks
+examples/            command-line descriptive smoke example
 ```
 
----
+All domain notes and notebooks are proposed or stipulated demonstrations. No
+capital–labor, financial, biological, sociological, protest, or cybersecurity
+test has been statistically validated.
 
-## Quick start
-
-```python
-import numpy as np
-import ts2eg as gm
-from ts2eg import extensions as ext
-
-# X: N x T time series (players x time)
-N, T = 5, 360
-rng = np.random.default_rng(1)
-X = rng.standard_normal((N, T))
-
-# Seasonal information-sharing game with optional weights
-w = np.ones(N)
-res = ext.var_information_sharing_game_seasonal(
-    X, p=2, ridge=1e-3, seasonal_period=12, seasonal_multiples=[1, 2],
-    include_self_always=True, lambda_common=0.0, weights=w
-)
-
-# Strategy basis (NMF) and replicator operator A
-X0 = (X - X.min(axis=1, keepdims=True)) / (np.ptp(X,axis=1, keepdims=True) + 1e-9)
-S, H = gm.nmf_on_X(X0, k=3, iters=200, seed=2, normalize="l2")
-
-X_std = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-12)
-A = ext.estimate_A_from_series_weighted(S, X_std, X_std, k=3, ridge=1e-3, weights=w)["A"]
-
-equilibria = gm.find_ESS(A, tol=1e-8, max_support=3)
-certified = [e for e in equilibria if e["ess_status"] == "certified"]
-print("Descriptive ESS-certified supports:", [e["support"] for e in certified])
-```
-
----
-
-See derivations in [docs/ts2eg_math_background.tex](docs/ts2eg_math_background.tex).
-
-## Why this exists
-
-Many “inverse EGT” papers start from observed **strategy frequencies**. Real datasets are often **player‑level time series** instead. This repo provides a **coordinate pipeline** from player signals to strategies and payoffs:
-
-1. Decompose per‑time payoffs into **common‑interest** vs **zero‑sum** directions (ANOVA/Helmert).
-2. Induce payoffs from time series via two choices: static discretized profiles or **information‑sharing** gains (VAR‑like OLS).
-3. Learn a compact **strategy basis** and infer time‑varying **mixtures** $x(t)\in\Delta_k$.
-4. Fit a **strategy‑level payoff operator** $A$ so replicator dynamics apply.
-5. Report descriptive Nash, ESS-certificate, and local-stability diagnostics for the fitted operator.
-(Original phrasing restored and expanded.)
-
----
-
-## Pipeline
-
-**0) Mean/contrast geometry (ANOVA/Helmert).**  
-Common‑interest projector $M_I=\tfrac{1}{N}\mathbf1\mathbf1^\top$; centering $M_Z=I-M_I$. Optional Helmert basis (first column $\mathbf1/\sqrt N$).
-
-**1) Payoff induction from time series.**
-
-* **Static profiles:** discretize $M_Z X$ (e.g., terciles) and map joint profiles to $\mathbb E[X_{t+1}\mid a_t]$; keep $M_I/M_Z$ components.
-* **Information sharing (VAR = Vector Autoregression):** per player $i$, baseline MSE (self lags) vs MSE (shared lags); **gain = baseline − observed**; center across players.
-
-**2) Strategies and mixtures.**  
-Learn $S\in\mathbb R^{N\times k}$ (NMF/archetypes recommended). Infer $x(t)\in\Delta_k$ by projecting $X_{\cdot,t}$ onto cone$(S)$ with a simplex constraint.
-
-**3) Strategy‑level signals.**  
-$g(t)=S^\top v_Z(t)$ where $v_Z(t)=M_Z v(t)$.
-
-**4) Replicator‑compatible operator.**  
-Center in strategy space $M_Z^{(k)}=I-\tfrac{1}{k}\mathbf1\mathbf1^\top$. Fit $A_{\mathrm{raw}}$ via ridge so $M_Z^{(k)} g \approx A_{\mathrm{raw}} x$, then use the left-canonical representative $A=M_Z^{(k)}A_{\mathrm{raw}}$.
-
-**5) Equilibria and ESS.**  
-Enumerate supports; solve $A_{JJ}x_J=\alpha \mathbf1$ with $\mathbf1^\top x_J=1$; check Nash inequalities; certify ESS only when unused strategies are strictly worse and the symmetric payoff part is negative definite on an orthonormal support tangent. Report Jacobian and transverse invasion eigenvalues separately.
-
----
-
-## Minimal API
-
-```python
-# Geometry
-helmert_Q(N) -> Q
-projectors(N) -> (M_I, M_Z)
-weighted_projectors(weights) -> (M_Iw, M_Zw)
-
-# Payoffs
-static_game_from_series(...)
-var_information_sharing_game(...)
-var_information_sharing_game_seasonal(...)
-
-# Strategy learning
-nmf_on_X(X, k, iters=200, seed=None, normalize="l2") -> (S, H)
-
-# Replicator operator
-estimate_A_from_series(S, X, v, k, ridge=0.0) -> {..., "A": A}
-estimate_A_from_series_weighted(..., weights=None) -> {..., "A": A}
-
-# Equilibria
-find_ESS(A, tol=1e-8, max_support=None) -> [{"is_nash", "ess_status",
-    "is_ess", "stability_status", "is_locally_asymptotically_stable", ...}]
-
-# Surrogates
-iaaft(x, n_iter=100, rng=None, seed=None) -> x_sur
-iaaft_matrix(X, n_iter=100, seed=None) -> X_sur
-surrogate_ess_frequency(...) -> {"ess_rate": float, ...}  # deprecated, descriptive only
-```
-
----
-
-## Descriptive diagnostics
-
-* Held‑out $R^2$ of $M_Z^{(k)}g \approx A x$  
-* Energy split $A_s=(A+A^\top)/2$ vs $A_a=(A-A^\top)/2$  
-* ESS certificate status and its symmetric-part tangent eigenvalues
-* Replicator-Jacobian tangent eigenvalues and transverse invasion eigenvalues
-* Legacy IAAFT surrogate ESS frequency (deprecated and uncalibrated; never a p-value)
-* Rolling windows of $A$ and descriptive equilibrium diagnostics
-* Edge case: if $X_t=c_t\mathbf1$, then $v_Z\equiv 0$ → no EGT signal (by design)
-
----
-
-## Applications & demos
-
-* **Finance:** capital–labor, factor rotation & governance.  
-* **Biology:** ecology/microbiology/cancer per‑capita growth, interaction fields, ESS.  
-* **Sociology:** coalitions, protests, diffusion.  
-* **Cybersecurity:** detector portfolio governance, deception, orchestration.  
-* **SETI (toy):** spectral band allocation nulls.
-
-See `examples/demo_var_game.py` and `notebooks/` for runnable artifacts.
-
----
-
-## Notebooks & docs
-
-* **notebooks/**: curated demos include a bootstrap cell so `import ts2eg` works before install  
-* **docs/**: FINANCE.md, BIOLOGY.md, SOCIOLOGY.md, CYBERSECURITY.md, CAPITAL_LABOR.md summarize domain use
-
----
-
-## Tests
+## Development checks
 
 ```bash
+python -m pip install -e .
 pytest -q
+MPLBACKEND=Agg TS2EG_CI=1 \
+  python scripts/run_notebooks.py --tag fast --timeout 120
 ```
 
-All tests pass locally on Python ≥ 3.9.
-
----
+See [the mathematical background](docs/ts2eg_math_background.tex),
+[the statistical contract](docs/design/STATISTICAL_CONTRACT.md), and
+[the redesign plan](docs/exec-plans/TS2EG_V2_REDESIGN.md).
 
 ## Reproducibility
 
-Seed RNGs; keep OLS/ridge deterministic; save $S$, $A$, and window params; report $k$, $\lambda$, and commit hash.
+Record the input/preprocessing definition, payoff construction, basis seed,
+$k$, `ridge`, and commit SHA. Treat basis-seed and rolling-window comparisons
+as descriptive unless a separately specified selection and calibration design
+has been executed.
 
----
-
-## License
+## License and citation
 
 MIT.
 
----
-
-## Citation
-
 ```bibtex
 @misc{ts2eg_egt,
-  title   = {Timeseries to EGT: From Multivariate Signals to Evolutionary Games},
-  author  = {Florian Lengyel},
-  year    = {2025},
-  note    = {Version <tag/commit>}
+  title  = {timeseries-to-egt (ts2eg)},
+  author = {Florian Lengyel},
+  year   = {2025},
+  note   = {Version <tag-or-commit>}
 }
 ```
-
-## Math glossary
-
-**Vectors & matrices**  
-
-* $\mathbf{1}_n \in \mathbb{R}^n$: all-ones column vector  
-* $I_n$: $n\times n$ identity  
-* $X \in \mathbb{R}^{N\times T}$: time series (rows = series, cols = time)  
-* $S \in \mathbb{R}^{N\times k}$: nonnegative strategy loadings (from NMF)  
-* $X_k \in \mathbb{R}^{k\times T}$: reduced membership/latent time series  
-* $A \in \mathbb{R}^{k\times k}$: normal-form payoff operator in strategy space  
-
-**Projectors (unweighted)**  
-
-* Mean projector onto the constant subspace:  
-  $$M_I^{(n)}=\frac{1}{n}\,\mathbf{1}_n \mathbf{1}_n^\top \quad\text{(symmetric, idempotent, rank 1)}$$
-* Centering projector onto the zero-mean subspace:  
-  $$M_Z^{(n)}=I_n-M_I^{(n)}=I_n-\frac{1}{n}\,\mathbf{1}_n \mathbf{1}_n^\top \quad\text{(symmetric, idempotent)}$$
-* Identities: $M_I^{(n)}\mathbf{1}_n=\mathbf{1}_n$, $M_Z^{(n)}\mathbf{1}_n=\mathbf{0}$, $M_I^{(n)}M_Z^{(n)}=0$, $M_I^{(n)}+M_Z^{(n)}=I_n$.
-
-**Projectors (weighted)**  
-For weights $w\in\mathbb{R}_{\ge 0}^n$ with $\sum_i w_i>0$, define $\pi = w/\sum_i w_i$. Then  
-$$M_I^{(n)}(w)=\mathbf{1}_n \pi^\top,\qquad M_Z^{(n)}(w)=I_n-\mathbf{1}_n \pi^\top.$$
-(Orthogonal under the $w$-weighted inner product.)
-
-**Helmert basis $Q$**  
-
-* $Q\in\mathbb{R}^{N\times N}$ orthonormal with $Q^\top Q=I_N$.  
-* First column $q_1=\mathbf{1}_N/\sqrt{N}$ spans the mean subspace; columns $2..N$ span the centered subspace.  
-* Code: `Q = ts2eg.helmert_Q(N)`; invariants: `Q.T @ Q == I`, `Q[:,0] == 1/sqrt(N)`.
-
-**Centering a payoff operator**  
-Replicator payoffs are equivalent under $A\sim A+\mathbf1c^\top$. The canonical representative is
-
-$$A_{\mathrm{canonical}}=M_Z^{(k)}A_{\mathrm{raw}},$$
-which guarantees $\mathbf1^\top A_{\mathrm{canonical}}=0$. Right-centering by multiplying with $M_Z^{(k)}$ on the right is not an identification normalization and generally changes the replicator vector field.
-
-**Ridge-regularized fit for $A_{\mathrm{raw}}$**
-Given $C_{xx}=X_k X_k^\top$ and $C_{gx}=G_c X_k^\top$ (centered signals $G_c$),  
-$$A_{\mathrm{raw}} = C_{gx}\,(C_{xx}+\rho I_k)^{-1},\qquad \rho=\texttt{ridge}\ge 0,$$
-implemented with `np.linalg.solve`, fallback to `np.linalg.pinv` on singularities, then left-canonicalized as described above.
-
-**ESS / Nash (sketch)**  
-`ts2eg.find_ESS(A)` enumerates mixed-support candidates and returns `is_nash`, `ess_status`, and separate local-stability diagnostics. `is_ess` remains a compatibility alias for `ess_status == "certified"`; `False` is inconclusive when `ess_status == "undetermined"`.
-
-**API touchpoints**  
-
-* `helmert_Q(N)`, `projectors(N)` → $Q$, $M_I^{(N)}$, $M_Z^{(N)}$  
-* `estimate_A_from_series(S, X, v, k, ridge=...)` → canonical $A$, `A_raw` (+ diagnostics)
-* `extensions.estimate_A_from_series_weighted(..., ridge=..., weights=...)` uses $M_I^{(n)}(w)$, $M_Z^{(n)}(w)$ for weighted centering  
-* `find_ESS(A)` → ESS/Nash summary  
-
-**Further derivations**  
-See **docs/ts2eg_math_background.tex** for proofs linking $Q$, projectors, and centering of $A$.

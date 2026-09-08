@@ -10,6 +10,9 @@ Adds:
   3) IAAFT surrogate generator + deprecated legacy descriptive ESS-frequency harness
 
 This file does NOT modify the base module. It imports and extends it.
+The legacy estimators have no validated capability to detect interaction,
+mixture dynamics, regimes, cycles, ESS in data, or causal effects.  The motion
+estimator specified in the v2 design is not implemented here.
 """
 
 from __future__ import annotations
@@ -27,7 +30,8 @@ from .geometry import canonicalize_payoff_operator, centering_projector
 def weighted_projectors(weights: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     Weighted projection onto span{1} and its complement under the W-inner product,
-    where W = diag(weights). For v in R^N,
+    where ``W = diag(weights)`` and every weight is finite and strictly positive.
+    For v in R^N,
       M_I^(w) v = ((1^T W v) / (1^T W 1)) * 1
     Matrix form: M_I^(w) = 1 * (1^T W) / (1^T W 1) = 1 * (w^T) / sum(w).
     Returns (M_Iw, M_Zw).
@@ -92,7 +96,11 @@ def var_information_sharing_game_seasonal(
     Seasonal extension of the base Option B. Binary "share" profile a in {0,1}^N determines which
     players' lagged signals are available to all. For player i, predict x_i(t) from chosen lags of the
     shared set (and i's own if include_self_always). Payoff_i(a) = MSE_i(self-only) − MSE_i(a).
-    Center across players using weighted or unweighted projectors.
+    Decompose gains using weighted or unweighted projectors. ``payoffs_I`` and
+    ``payoffs_Z`` retain the aggregate/common and relative/mean-zero channels;
+    ``payoffs`` equals ``payoffs_Z + lambda_common * payoffs_I``.  It is therefore
+    centered only when ``lambda_common=0``.  If supplied, ``weights`` must be
+    finite and strictly positive.
     """
     if X.ndim != 2:
         raise ValueError("X must be 2D (N x T)")
@@ -162,15 +170,30 @@ def var_information_sharing_game_seasonal(
 
 def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray, k: int, ridge: float = 0.0, weights: np.ndarray | None = None):
     """
-    Weighted variant of gm.estimate_A_from_series:
-      1) vZ = M_Z v (weighted if weights provided).
-      2) g(t) = S^T vZ(t).
-      3) infer memberships x(t) by projecting X(:,t) onto cone(S) with simplex constraint.
-      4) ridge for A_raw in g ≈ A_raw x, followed by the canonicalization
-         A = M_Z^(k) @ A_raw.
+    Fit the weighted legacy contemporaneous payoff-field regression.
+
+    This is the weighted-player-centering variant of
+    :func:`ts2eg.estimate_A_from_series`; it has no validated detection
+    capability and is not a mixture-motion estimator.
+    ``ridge`` is the coefficient in the no-intercept ridge regression
+    ``Gc ~= A_raw @ Xk``.  If supplied, ``weights`` must be finite and strictly
+    positive and affect only the player-space decomposition of ``v``.  They do
+    not weight reconstruction or mixture inference.
+
+    The routine copies and L2-normalizes the columns of ``S`` and then re-infers
+    each mixture from ``X`` by 200 projected-gradient iterations over the
+    simplex.  It ignores any NMF coefficient matrix ``H`` and has no amplitude
+    term, so ``X`` must use the same preprocessing scale on which ``S`` was fit.
+
+    The pipeline retains ``vZ = M_Z @ v`` and discards the aggregate payoff
+    channel, maps ``g(t) = S.T @ vZ(t)``, and fits ``A_raw`` before returning the
+    left-canonical ``A = M_Z^(k) @ A_raw``.
 
     The returned public A satisfies 1.T @ A == 0.  A @ 1 is not constrained;
     right-centering would change the replicator vector field in general.
+    ``ss_res = ||Gc - A @ Xk||_F^2`` and ``ss_tot = ||Gc||_F^2`` are in-sample
+    quantities.  ``R2 = 1 - ss_res / ss_tot`` uses the zero payoff field as its
+    baseline, is NaN when ``ss_tot`` is zero, and is not a held-out score.
     """
     if S.ndim != 2:
         raise ValueError("S must be 2D (N x k)")
@@ -183,13 +206,13 @@ def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray,
         raise ValueError("Shapes must agree: S=(N,k); X,v=(N,T) with same N,T.")
     T = X.shape[1]
 
-    # Normalize S columns
+    # Normalize S columns before the legacy simplex re-inference.
     S = S.copy().astype(float)
     col_norms = np.linalg.norm(S, axis=0)
     col_norms[col_norms == 0.0] = 1.0
     S /= col_norms
 
-    # Weighted centering across players
+    # Retain only weighted relative/mean-zero payoffs across players.
     if weights is None:
         M_I, M_Z = gm.projectors(N)
     else:
@@ -216,8 +239,8 @@ def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray,
     Ghat = A @ Xk
     resid = Gc - Ghat
     ss_res = float(np.sum(resid**2))
-    ss_tot = float(np.sum(Gc**2)) + 1e-12
-    R2 = 1.0 - ss_res / ss_tot
+    ss_tot = float(np.sum(Gc**2))
+    R2 = np.nan if ss_tot == 0.0 else 1.0 - ss_res / ss_tot
     return {
         "A": A,
         "A_raw": A_raw,
@@ -225,6 +248,8 @@ def estimate_A_from_series_weighted(S: np.ndarray, X: np.ndarray, v: np.ndarray,
         "Gk": Gk,
         "Gc": Gc,
         "R2": R2,
+        "ss_res": ss_res,
+        "ss_tot": ss_tot,
         "Cxx": Cxx,
         "Cgx": Cgx,
     }
@@ -268,7 +293,12 @@ def surrogate_ess_frequency(S: np.ndarray, X: np.ndarray, v: np.ndarray | None, 
     ESS-certified record from :func:`ts2eg.find_ESS`.  No replacement
     inferential procedure is introduced here.
 
-    If v is None, use v = X.
+    ``ridge`` is passed to the legacy no-intercept payoff-field regression.
+    If ``weights`` is supplied, every entry must be finite and strictly positive.
+    Each surrogate fit L2-normalizes ``S`` and re-infers simplex memberships from
+    the surrogate ``X``; it does not use NMF coefficients.  If ``v`` is None, use
+    ``v = X``.
+
     Returns dict with 'ess_rate', 'nash_rate', 'R2_mean', 'R2_std'.
     """
     warnings.warn(

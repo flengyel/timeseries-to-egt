@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ts2eg"
 version = "0.1.1"
-description = "Turn multivariate time series into evolutionary games and analyze stability via replicator dynamics."
+description = "Legacy descriptive payoff-field tools; no validated interaction or dynamics test."
 readme = "README.md"
 requires-python = ">=3.9"
-authors = [{name = "Your Name"}]
+authors = [{name = "Florian Lengyel"}]
 license = {text = "MIT"}
 dependencies = ["numpy>=1.24"]
 

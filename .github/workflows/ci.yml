@@ -6,7 +6,25 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Reject tracked local and generated artifacts
+        run: python scripts/check_tracked_artifacts.py
+
   tests:
     runs-on: ubuntu-latest
     strategy:
@@ -25,18 +43,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install -e .
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
 
       - name: Run tests
         run: pytest -q
-
 
       - name: Smoke demo (only on 3.12)
         if: matrix.python-version == '3.12'
         env:
           MPLBACKEND: Agg
         run: python examples/demo_var_game.py --N 4 --T 120 --p 2 --k 3 --ridge 1e-3 --seed 0
+
   notebooks:
     name: Notebooks (fast)
     runs-on: ubuntu-latest
@@ -45,20 +63,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-notebooks.txt
       - name: Install package + notebook deps
         run: |
           python -m pip install -U pip
-          pip install -e .
-          pip install -r requirements-notebooks.txt
-      - name: Run fast notebooks (headless, no network)
+          python -m pip install -e .
+          python -m pip install -r requirements-notebooks.txt
+      - name: Audit committed notebooks
+        run: python scripts/audit_notebooks.py
+      - name: Run committed fast notebooks (headless and offline)
         env:
           TS2EG_CI: "1"
           MPLBACKEND: "Agg"
+          PYTHONHASHSEED: "0"
         run: |
           python scripts/run_notebooks.py --tag fast --timeout 120
-      - name: Upload executed notebooks (artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: notebooks-executed
-          path: artifacts/notebooks/*.executed.ipynb
+      - name: Verify notebook sources were not changed
+        if: always()
+        run: git diff --exit-code -- notebooks
